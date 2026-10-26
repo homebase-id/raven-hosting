@@ -1228,6 +1228,12 @@ button.button.secondary {
   cursor: pointer;
 }
 
+/* A text button, not a filled one: no minimum height, so it sits on the line beside its text */
+button.link-button {
+  min-height: 0;
+  border: 0;
+}
+
 .link-button:hover {
   background: none;
   color: var(--wine);
