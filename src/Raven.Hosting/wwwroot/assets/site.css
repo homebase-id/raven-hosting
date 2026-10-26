@@ -150,9 +150,11 @@ body {
   opacity: 0.85;
 }
 
+/* At least 44px tall, so they are easy to tap */
 .account .button,
 .account button {
-  padding: 0.5rem 1.1rem;
+  min-height: 2.75rem;
+  padding: 0.65rem 1.1rem;
   font-size: 0.9rem;
 }
 
@@ -512,8 +514,9 @@ main.frame {
   color: var(--green);
 }
 
+/* Missing features in the muted text colour, not faded: they still read at 4.5:1 */
 .gives .lacks {
-  opacity: 0.55;
+  color: var(--muted);
 }
 
 .gives .lacks::before {
@@ -523,8 +526,8 @@ main.frame {
 .explain {
   display: block;
   color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.4;
+  font-size: 0.875rem;
+  line-height: 1.45;
 }
 
 .visually-hidden {
@@ -789,4 +792,109 @@ button.on-dark:hover,
 
 .meter span.full {
   background: #b42318;
+}
+
+/* The home page below the plans: what each plan includes, the questions, and the close */
+
+.compare,
+.faq {
+  margin-top: 4rem;
+}
+
+/* The table scrolls sideways on its own on a narrow screen; the page never does */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+
+.compare table {
+  width: 100%;
+  min-width: 36rem;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare th,
+.compare td {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+  vertical-align: top;
+}
+
+.compare tbody tr:last-child th,
+.compare tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.compare thead th {
+  color: var(--purple);
+  font: 700 1.05rem / 1.2 var(--heading);
+}
+
+.compare tbody th {
+  width: 40%;
+  font-weight: 600;
+  text-align: left;
+}
+
+.mark-yes {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.mark-no {
+  color: var(--muted);
+}
+
+.faq dl {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) 2fr;
+  gap: 1rem 2rem;
+  margin: 1rem 0 0;
+}
+
+.faq dt {
+  font-weight: 600;
+}
+
+.faq dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+@media (max-width: 40rem) {
+  .faq dl {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .faq dd {
+    margin-bottom: 1rem;
+  }
+}
+
+/* The close: the header's gradient again, as a bookend, with the one action */
+.closing {
+  margin-top: 4.5rem;
+  padding: 2.5rem 2rem;
+  border-radius: var(--radius);
+  background: var(--gradient);
+  color: #fff;
+}
+
+.closing h2 {
+  margin-bottom: 0.5rem;
+  font-size: 1.6rem;
+}
+
+.closing p {
+  max-width: 34rem;
+  color: rgb(255 255 255 / 0.92);
+}
+
+.closing .button {
+  margin-top: 0.75rem;
 }

@@ -1,0 +1,13 @@
+@* Whether a plan has a feature, in the comparison table: a tick, or a dash, with words for a screen reader *@
+@if (Has)
+{
+    <span class="mark-yes" aria-hidden="true">✓</span><span class="visually-hidden">Included</span>
+}
+else
+{
+    <span class="mark-no" aria-hidden="true">–</span><span class="visually-hidden">Not included</span>
+}
+
+@code {
+    [Parameter] public bool Has { get; set; }
+}
