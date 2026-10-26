@@ -1060,12 +1060,32 @@ button.button.secondary {
 
 /* Your plan (/account) and join links: what someone pays for, the people on it and their shares, its invoices */
 
+/* A change that worked: the success colour on the edge and in the icon, with the words in Ink */
 .done {
-  padding: 0.7rem 0.9rem;
-  border-left: 3px solid var(--green);
-  background: var(--green-tint);
-  color: #05603a;
+  position: relative;
+  margin: 0 0 1rem;
+  padding: 0.85rem 1.1rem 0.85rem 2.9rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--success);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
   font-weight: 500;
+}
+
+.done::before {
+  content: "✓";
+  position: absolute;
+  top: 0.95rem;
+  left: 1rem;
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--success);
+  color: #fff;
+  font: 700 0.75rem / 1 var(--body);
 }
 
 .facts {
@@ -1181,15 +1201,15 @@ button.button.secondary {
   display: inline-block;
   padding: 0.1rem 0.6rem;
   border-radius: 999px;
-  background: var(--purple-tint);
-  color: var(--purple);
+  background: var(--ember-tint);
+  color: var(--ember-deep);
   font-size: 0.8rem;
   font-weight: 600;
 }
 
 .tag.warn {
-  background: #fff7e0;
-  color: #6b4d00;
+  background: #fbf0dc;
+  color: var(--warning);
 }
 
 .inline-form {
@@ -1201,7 +1221,7 @@ button.button.secondary {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--purple);
+  color: var(--ember-deep);
   font: inherit;
   font-weight: 600;
   text-decoration: underline;
@@ -1210,7 +1230,7 @@ button.button.secondary {
 
 .link-button:hover {
   background: none;
-  color: var(--teal);
+  color: var(--wine);
 }
 
 td .link-button {
@@ -1224,14 +1244,17 @@ td .link-button {
 }
 
 /* A second choice that still works: button.secondary looks disabled */
+/* A second choice that still works, in the brand's secondary style: white with a hairline */
 .button.secondary-outline {
-  background: transparent;
-  border-color: var(--purple);
-  color: var(--purple);
+  border-color: var(--line);
+  background: var(--paper);
+  color: var(--night);
 }
 
 .button.secondary-outline:hover {
-  background: var(--purple-tint);
+  border-color: var(--ember);
+  background: var(--paper);
+  color: var(--night);
 }
 
 .row-form {
