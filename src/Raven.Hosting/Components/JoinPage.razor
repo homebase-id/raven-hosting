@@ -1,0 +1,47 @@
+@* A join link, opened signed in as the identity it is for: whose plan, what they get, and what happens to the plan
+   they are on now *@
+<SitePage Title="Join a plan">
+    <div class="card">
+        <div class="who-cell">
+            <img class="avatar-large" src="@PublicProfiles.ImageUrl(View.Subscription.Owner)" alt="" width="48" height="48" referrerpolicy="no-referrer">
+            <p class="muted">@View.Subscription.Owner invited you to</p>
+        </div>
+        <h2>@View.PlanName</h2>
+        <p class="price">@StorageSize.Format(Member.QuotaBytes) of storage for you</p>
+        @if (Plan != null)
+        {
+            <PlanDetails Plan="Plan" ShowDescription="false" ShowStorage="false" ShowPrices="false" />
+        }
+        <p class="muted">@View.Subscription.Owner pays for it. You keep your identity and everything on it; only your plan changes.</p>
+        @if (Covering != null)
+        {
+            <p class="banner" role="note">@Instead(Covering)</p>
+        }
+    </div>
+
+    <form method="post" action="@($"/join/{Token}")">
+        <AntiforgeryField Token="Antiforgery" />
+        <div class="actions">
+            <button type="submit" name="action" value="join">Join @View.Subscription.Owner's plan</button>
+            <button type="submit" name="action" value="decline" class="button secondary-outline">Decline</button>
+        </div>
+    </form>
+</SitePage>
+
+@code {
+    [Parameter] public SubscriptionView View { get; set; } = null!;
+    [Parameter] public SubscriptionMember Member { get; set; } = null!;
+    [Parameter] public Plan? Plan { get; set; }
+
+    /// <summary>The paid plan they are on now, which joining leaves; null when they are on none</summary>
+    [Parameter] public SubscriptionView? Covering { get; set; }
+    [Parameter] public string Token { get; set; } = "";
+    [Parameter] public Microsoft.AspNetCore.Antiforgery.AntiforgeryTokenSet Antiforgery { get; set; } = null!;
+
+    private string Instead(SubscriptionView now) =>
+        now.Subscription.Owner != Member.Identity
+            ? $"You are on {now.Subscription.Owner}'s {now.PlanName} now: joining takes you off it."
+            : now.Subscription.IsGroup
+                ? $"You have a seat on your own {now.PlanName} now: joining gives it up. You still pay for {now.PlanName}."
+                : $"You pay for {now.PlanName} now: joining stops it renewing. What is left of its term is not refunded.";
+}

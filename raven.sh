@@ -57,7 +57,7 @@ HOSTING PLANS  (create key)
         --json              print the service's JSON instead (the readable form needs jq)
 
   plan-create --id <plan id> --name <text> --quota-bytes <n> --public-web-presence true|false
-              [--public-email true|false] [--email-aliases <n>]
+              [--public-email true|false] [--email-aliases <n>] [--seats <n>]
               [--price <months>:<dollars>]... [--for-sale true|false] [--sort-order <n>]
               [--recommended true|false] [--description <text>]
       Makes a new plan and prints it.
@@ -71,6 +71,9 @@ HOSTING PLANS  (create key)
                                        address. Shown on its card only
         --email-aliases <n>            optional, 0 by default: how many email aliases it has.
                                        Shown on its card only
+        --seats <n>                    optional, 1 by default: how many identities it covers. More
+                                       than 1 makes it a group plan, whose storage the one who pays
+                                       shares out between them, at least 1 GB each
         --price <months>:<dollars>     optional, once per billing term: what it costs, in US
                                        dollars, for that many months (1 to 120), e.g.
                                        --price 1:5 --price 12:50 --price 24:90 for \$5 a month,
@@ -85,7 +88,7 @@ HOSTING PLANS  (create key)
         --description <text>           optional: a line shown on its card
 
   plan-edit <plan id> [--name <text>] [--quota-bytes <n>] [--public-web-presence true|false]
-            [--public-email true|false] [--email-aliases <n>] [--for-sale true|false]
+            [--public-email true|false] [--email-aliases <n>] [--seats <n>] [--for-sale true|false]
             [--sort-order <n>] [--recommended true|false] [--description <text>]
       Changes only what you give. Identities already on the plan keep what they were given; the
       change applies to the next signup or purchase. To retire a plan, use --for-sale false.
@@ -274,6 +277,9 @@ plan_fields() { # usage [option value]...; the plan options as JSON fields, in t
       --email-aliases)
         [[ "${2:-}" =~ ^[0-9]+$ ]] || die "--email-aliases must be a number, 0 or more, e.g. --email-aliases 5"
         fields+=("\"emailAliases\":$((10#$2))"); shift 2 ;;
+      --seats)
+        [[ "${2:-}" =~ ^[0-9]+$ && $((10#$2)) -ge 1 ]] || die "--seats must be a number, 1 or more, e.g. --seats 5"
+        fields+=("\"seats\":$((10#$2))"); shift 2 ;;
       --public-web-presence|--public-email|--for-sale|--recommended)
         [[ "${2:-}" =~ ^(true|false)$ ]] || die "$1 must be true or false"
         case "$1" in
@@ -409,8 +415,8 @@ INTRO
       def pad(n): . + (" " * ([n - length, 0] | max));
       def clip(n): if length > n then .[0:n - 3] + "..." else . end;
       . as $plans
-      | ["ID", "NAME", "STORAGE", "PUBLIC PAGE", "PUBLIC EMAIL", "ALIASES", "FOR SALE", "PRICES", "ORDER"] as $head
-      | [$plans[] | [.id, (.name | clip(30)), .storage, (if .publicWebPresence then "yes" else "no" end),
+      | ["ID", "NAME", "STORAGE", "SEATS", "PUBLIC PAGE", "PUBLIC EMAIL", "ALIASES", "FOR SALE", "PRICES", "ORDER"] as $head
+      | [$plans[] | [.id, (.name | clip(30)), .storage, "\(.seats)", (if .publicWebPresence then "yes" else "no" end),
                      (if .publicEmail then "yes" else "no" end), "\(.emailAliases)",
                      (if .forSale then "yes" else "no" end),
                      (if (.prices | length) == 0 then "-" else [.prices[].text] | join(", ") end),
@@ -437,6 +443,7 @@ INTRO
       (if .description == "" then "(no description)" else .description end),
       "",
       "  storage       \(.storage) (\(.quotaBytes) bytes)",
+      "  seats         \(.seats)",
       "  public page   \(.publicWebPresence | yes)",
       "  public email  \(.publicEmail | yes)",
       "  email aliases \(.emailAliases)",
@@ -450,7 +457,7 @@ INTRO
       "  changed       \(.updatedAt | when)"'
     ;;
   plan-create)
-    plan_create_usage="usage: ./raven.sh plan-create --id <plan id> --name <text> --quota-bytes <n> --public-web-presence true|false [--public-email true|false] [--email-aliases <n>] [--price <months>:<dollars>]... [--for-sale true|false] [--sort-order <n>] [--recommended true|false] [--description <text>]  (see ./raven.sh help)"
+    plan_create_usage="usage: ./raven.sh plan-create --id <plan id> --name <text> --quota-bytes <n> --public-web-presence true|false [--public-email true|false] [--email-aliases <n>] [--seats <n>] [--price <months>:<dollars>]... [--for-sale true|false] [--sort-order <n>] [--recommended true|false] [--description <text>]  (see ./raven.sh help)"
     plan_id=""; rest=(); prices=()
     while [[ $# -gt 0 ]]; do
       case "$1" in
@@ -472,7 +479,7 @@ INTRO
     base="$PLANS" call POST / "{$(IFS=,; echo "${fields[*]}")}"
     ;;
   plan-edit)
-    plan_edit_usage="usage: ./raven.sh plan-edit <plan id> [--name <text>] [--quota-bytes <n>] [--public-web-presence true|false] [--public-email true|false] [--email-aliases <n>] [--for-sale true|false] [--sort-order <n>] [--recommended true|false] [--description <text>]  (prices: plan-price)"
+    plan_edit_usage="usage: ./raven.sh plan-edit <plan id> [--name <text>] [--quota-bytes <n>] [--public-web-presence true|false] [--public-email true|false] [--email-aliases <n>] [--seats <n>] [--for-sale true|false] [--sort-order <n>] [--recommended true|false] [--description <text>]  (prices: plan-price)"
     plan_id="${1:-}"
     check_plan_id "$plan_id" "$plan_edit_usage"
     shift

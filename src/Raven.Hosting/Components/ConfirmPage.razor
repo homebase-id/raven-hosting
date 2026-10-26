@@ -1,5 +1,15 @@
 @* Step 2: the change, and how to pay *@
 <SitePage Title="Confirm your new plan" Step="1">
+    @if (Owned != null)
+    {
+        <p class="banner" role="note">
+            This changes your @Owned.PlanName subscription to @Plan.Name, paid from today. What is left of its term is not refunded.
+            @if (Owned.Holding.Count(m => m.Identity != Owned.Subscription.Owner) is > 0 and var others)
+            {
+                <text> The @(others == 1 ? "person" : $"{others} people") on it stay on it.</text>
+            }
+        </p>
+    }
     <div class="card">
         <p class="muted">Change your plan from <strong>@CurrentPlanName</strong>@(Now?.QuotaBytes is { } quota ? $" ({StorageSize.Format(quota)})" : "") to</p>
         <h2>@Plan.Name</h2>
@@ -12,6 +22,15 @@
 
     <form method="get" action="@($"{UpgradePage.Root}/checkout")" class="card terms">
         <input type="hidden" name="plan" value="@Plan.Id">
+        @if (Plan.IsGroup)
+        {
+            <fieldset>
+                <legend>Who is it for?</legend>
+                <label><input type="radio" name="seat" value="yes" checked> Me and others: I take one of its @Plan.Seats seats</label>
+                <label><input type="radio" name="seat" value="no"> Only others: I pay, and keep my own plan as it is</label>
+            </fieldset>
+            <p class="hint">After paying, you name the people on it; each joins with a link. You choose how much of its @Plan.Storage each gets.</p>
+        }
         <fieldset>
             <legend>How would you like to pay?</legend>
             @for (var i = 0; i < Plan.Prices.Count; i++)
@@ -47,4 +66,7 @@
 
     /// <summary>Whether they may buy: purchases are open, or they are a tester</summary>
     [Parameter] public bool CanBuy { get; set; }
+
+    /// <summary>The subscription they pay for now, which buying changes; null when they have none</summary>
+    [Parameter] public SubscriptionView? Owned { get; set; }
 }

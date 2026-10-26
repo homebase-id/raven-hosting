@@ -5,7 +5,7 @@
         <a class="btn btn-secondary" href="@($"{AdminPages.Root}/renewals.csv?within={Within}")" download>Export CSV</a>
     </Actions>
     <ChildContent>
-        <p class="mb-4 text-sm text-muted">A paid subscription keeps its plan for @PlanService.Grace.Days days after it runs out, then goes back to the free plan; nothing is deleted. Extend one from its page.</p>
+        <p class="mb-4 text-sm text-muted">With auto-renew on, an invoice for the next term is made @SubscriptionService.InvoiceAhead.Days days before a term runs out. Unpaid, or with auto-renew off, a subscription keeps its plan for @PlanService.Grace.Days days after it runs out, then its members go back to the free plan; nothing is deleted. Mark an invoice paid, or extend, from the owner's page.</p>
         <div class="mb-4 flex flex-wrap gap-2">
             @foreach (var (within, label) in Windows)
             {
@@ -23,24 +23,51 @@
             {
                 <div class="table-wrap">
                     <table class="table">
-                        <thead><tr><th>Identity</th><th>Plan</th><th>Paid</th><th>Bought</th><th>Until</th><th></th></tr></thead>
+                        <thead><tr><th>Owner</th><th>Plan</th><th>Price</th><th>Auto-renew</th><th>Until</th><th></th></tr></thead>
                         <tbody class="divide-y divide-line">
                             @foreach (var row in Rows)
                             {
+                                var sub = row.View.Subscription;
                                 <tr>
                                     <td>
                                         <span class="flex items-center gap-2">
-                                            <img src="@PublicProfiles.ImageUrl(row.Grant.Identity)" alt="" width="24" height="24" loading="lazy"
+                                            <img src="@PublicProfiles.ImageUrl(sub.Owner)" alt="" width="24" height="24" loading="lazy"
                                                  referrerpolicy="no-referrer" class="size-6 shrink-0 rounded-full bg-line object-cover">
-                                            <a class="link" href="@AdminPages.SubscriptionUrl(row.Grant.Identity)">@row.Grant.Identity</a>
-                                            <CopyButton Text="@row.Grant.Identity" Label="identity" />
+                                            <a class="link" href="@AdminPages.SubscriptionUrl(sub.Owner)">@sub.Owner</a>
+                                            <CopyButton Text="@sub.Owner" Label="identity" />
                                         </span>
                                     </td>
-                                    <td>@row.PlanName</td>
-                                    <td class="text-xs whitespace-nowrap">@(row.Grant.PriceAmountCents is { } cents && row.Grant.PriceMonths is { } months ? new PlanPrice(months, cents).Text : "")</td>
-                                    <td class="text-xs whitespace-nowrap text-muted">@AdminForm.Day(row.Grant.CreatedAt)</td>
-                                    <td class="text-xs whitespace-nowrap"><Until Row="row" /></td>
-                                    <td><a class="btn btn-small btn-secondary" href="@AdminPages.SubscriptionUrl(row.Grant.Identity)">Extend</a></td>
+                                    <td>
+                                        @row.View.PlanName
+                                        @if (sub.IsGroup)
+                                        {
+                                            <span class="block text-xs text-muted">@row.View.Holding.Count of @sub.Seats seats</span>
+                                        }
+                                    </td>
+                                    <td class="text-xs whitespace-nowrap">@sub.Price.Text</td>
+                                    <td class="text-xs whitespace-nowrap">
+                                        @if (row.View.OpenInvoice is { } open)
+                                        {
+                                            <StatusTag Text="@($"invoice open, {open.Price.Text}")" Tone="warn" />
+                                        }
+                                        else
+                                        {
+                                            @(sub.AutoRenew ? "on" : "off")
+                                        }
+                                    </td>
+                                    <td class="text-xs whitespace-nowrap">
+                                        <span>@AdminForm.Day(sub.PeriodEnd)</span>
+                                        @switch (row.State)
+                                        {
+                                            case "grace":
+                                                <StatusTag Text="@($"in grace, ends {AdminForm.Day(sub.GraceEndsAt)}")" Tone="bad" />
+                                                break;
+                                            case "expiring":
+                                                <StatusTag Text="@(row.DaysLeft == 0 ? "today" : $"{row.DaysLeft} day{(row.DaysLeft == 1 ? "" : "s")} left")" Tone="warn" />
+                                                break;
+                                        }
+                                    </td>
+                                    <td><a class="btn btn-small btn-secondary" href="@($"{AdminPages.SubscriptionUrl(sub.Owner)}#paid")">Open</a></td>
                                 </tr>
                             }
                         </tbody>
@@ -77,7 +104,7 @@
 
 @code {
     [Parameter, EditorRequired] public AdminContext Admin { get; set; } = null!;
-    [Parameter] public List<SubscriptionRow> Rows { get; set; } = [];
+    [Parameter] public List<RenewalRow> Rows { get; set; } = [];
     [Parameter] public List<PlanGrant> Dropped { get; set; } = [];
 
     /// <summary>7, 30 or 90 (days), or grace</summary>

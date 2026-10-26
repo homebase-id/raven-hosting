@@ -54,6 +54,11 @@
                     <span class="field-hint">Plans are listed by it, then by id.</span>
                 </label>
                 <label class="field">
+                    Seats
+                    <input class="input" name="seats" type="number" min="1" max="@SubscriptionStore.MostSeats" value="@Value("seats", (Plan?.Seats ?? 1).ToString())">
+                    <span class="field-hint">1 for one person. More makes it a group plan: its storage is shared out by whoever pays, at least 1 GB each.</span>
+                </label>
+                <label class="field">
                     Email aliases
                     <input class="input" name="emailAliases" type="number" min="0" value="@Value("emailAliases", (Plan?.EmailAliases ?? 0).ToString())">
                     <span class="field-hint">Shown on its card only: email is on hold.</span>

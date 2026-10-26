@@ -15,7 +15,7 @@
                     <table class="table">
                         <thead>
                             <tr>
-                                <th>Order</th><th>Plan</th><th>Storage</th><th>Public page</th><th>Public email</th>
+                                <th>Order</th><th>Plan</th><th>Storage</th><th>Seats</th><th>Public page</th><th>Public email</th>
                                 <th>Aliases</th><th>For sale</th><th>Recommended</th><th>Prices</th>
                             </tr>
                         </thead>
@@ -29,6 +29,7 @@
                                         <span class="block text-xs text-muted">@plan.Id</span>
                                     </td>
                                     <td class="whitespace-nowrap">@plan.Storage</td>
+                                    <td class="tabular-nums">@plan.Seats</td>
                                     <td><YesNo Value="plan.PublicWebPresence" /></td>
                                     <td><YesNo Value="plan.PublicEmail" /></td>
                                     <td class="tabular-nums">@plan.EmailAliases</td>

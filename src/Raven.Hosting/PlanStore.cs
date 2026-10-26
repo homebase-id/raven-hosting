@@ -19,6 +19,8 @@ namespace Raven.Hosting;
 /// <param name="SortOrder">Plans are listed by this, then by Id</param>
 /// <param name="Recommended">Whether its card is marked recommended for visitors; someone signed in is recommended the
 /// next size up from what they have instead. When more than one is, the first listed is</param>
+/// <param name="Seats">How many identities it covers: 1 for one person; more for a group plan, whose quota is a pool the
+/// owner shares out between its members (<see cref="SubscriptionStore"/>)</param>
 public record Plan(
     string Id,
     string Name,
@@ -32,8 +34,12 @@ public record Plan(
     int SortOrder,
     long CreatedAt,
     long UpdatedAt,
-    bool Recommended = false)
+    bool Recommended = false,
+    int Seats = 1)
 {
+    /// <summary>Whether it is for more than one identity, with its storage shared out between them</summary>
+    public bool IsGroup => Seats > 1;
+
     /// <summary>The quota as people read it, e.g. "1 TB"</summary>
     public string Storage => StorageSize.Format(QuotaBytes);
 
@@ -61,6 +67,7 @@ public record Plan(
         QuotaBytes == other.QuotaBytes && PublicWebPresence == other.PublicWebPresence &&
         PublicEmail == other.PublicEmail && EmailAliases == other.EmailAliases && ForSale == other.ForSale &&
         Prices.SequenceEqual(other.Prices) && SortOrder == other.SortOrder && CreatedAt == other.CreatedAt &&
+        Seats == other.Seats &&
         UpdatedAt == other.UpdatedAt && Recommended == other.Recommended;
 
     public override int GetHashCode() => HashCode.Combine(Id, QuotaBytes, ForSale, Prices.Count, UpdatedAt);
@@ -104,7 +111,8 @@ public record PlanRequest(
     int? SortOrder = null,
     bool? PublicEmail = null,
     int? EmailAliases = null,
-    bool? Recommended = null);
+    bool? Recommended = null,
+    int? Seats = null);
 
 /// <summary>
 /// A change to a plan; null leaves a field as it is. The Id cannot be changed; prices are changed one term at a time.
@@ -118,7 +126,8 @@ public record PlanChange(
     int? SortOrder = null,
     bool? PublicEmail = null,
     int? EmailAliases = null,
-    bool? Recommended = null);
+    bool? Recommended = null,
+    int? Seats = null);
 
 /// <summary>
 /// A plan request the store refuses: a bad Id, a missing name, a quota that is not more than 0, fewer than 0 email
@@ -138,9 +147,9 @@ public class PlanConflictException(string message) : Exception(message);
 /// </summary>
 public static class PlanIds
 {
-    // "grants" would be /api/v1/plans/grants, the grants' own route; "admin" is what /sign-in?next= takes to go on to
-    // the admin pages, where a plan Id goes on to confirming it
-    public static readonly string[] Reserved = ["grants", "admin"];
+    // "grants" would be /api/v1/plans/grants, the grants' own route; "admin" and "account" are what /sign-in?next=
+    // takes to go on to the admin pages and /account, where a plan Id goes on to confirming it
+    public static readonly string[] Reserved = ["grants", "admin", "account"];
 
     private static readonly Regex Format = new(@"^[A-Za-z0-9._-]{1,64}$", RegexOptions.Compiled);
 
@@ -253,6 +262,8 @@ public class PlanStore
                                 throw new InvalidPlanRequestException("publicWebPresence is required");
         var emailAliases = request.EmailAliases ?? 0;
         CheckEmailAliases(emailAliases);
+        var seats = request.Seats ?? 1;
+        CheckSeats(seats, quotaBytes);
 
         var prices = (request.Prices ?? []).Select(p => CheckPrice(
                 p.Months ?? throw new InvalidPlanRequestException("Each price needs months"),
@@ -272,7 +283,7 @@ public class PlanStore
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var plan = new Plan(id, name, request.Description?.Trim() ?? "", quotaBytes, publicWebPresence,
             request.PublicEmail ?? false, emailAliases, forSale, prices, request.SortOrder ?? 0, now, now,
-            request.Recommended ?? false);
+            request.Recommended ?? false, seats);
 
         await using var connection = await OpenAsync();
         await using var command = connection.CreateCommand();
@@ -345,7 +356,7 @@ public class PlanStore
             CheckEmailAliases(change.EmailAliases.Value);
         }
         if (change is { Name: null, Description: null, QuotaBytes: null, PublicWebPresence: null, PublicEmail: null,
-                EmailAliases: null, ForSale: null, SortOrder: null, Recommended: null })
+                EmailAliases: null, ForSale: null, SortOrder: null, Recommended: null, Seats: null })
         {
             throw new InvalidPlanRequestException("Nothing to change");
         }
@@ -357,6 +368,7 @@ public class PlanStore
                 throw new InvalidPlanRequestException(
                     $"A plan for sale needs at least one price; give {plan.Id} one first (raven.sh plan-price)");
             }
+            CheckSeats(change.Seats ?? plan.Seats, change.QuotaBytes ?? plan.QuotaBytes);
             return plan with
             {
                 Name = change.Name?.Trim() ?? plan.Name,
@@ -368,6 +380,7 @@ public class PlanStore
                 ForSale = change.ForSale ?? plan.ForSale,
                 SortOrder = change.SortOrder ?? plan.SortOrder,
                 Recommended = change.Recommended ?? plan.Recommended,
+                Seats = change.Seats ?? plan.Seats,
             };
         });
     }
@@ -486,14 +499,15 @@ public class PlanStore
         long UpdatedAt = 0,
         bool PublicEmail = false,
         int EmailAliases = 0,
-        bool Recommended = false);
+        bool Recommended = false,
+        int Seats = 1);
 
     private record StoredPrice(int Months, long AmountCents);
 
     private static string Write(Plan plan) => JsonSerializer.Serialize(new Stored(plan.Name, plan.Description,
         plan.QuotaBytes, plan.PublicWebPresence, plan.ForSale,
         plan.Prices.Select(p => new StoredPrice(p.Months, p.AmountCents)).ToList(), plan.SortOrder, plan.CreatedAt,
-        plan.UpdatedAt, plan.PublicEmail, plan.EmailAliases, plan.Recommended), Json);
+        plan.UpdatedAt, plan.PublicEmail, plan.EmailAliases, plan.Recommended, plan.Seats), Json);
 
     private static Plan Read(string id, string json)
     {
@@ -501,7 +515,7 @@ public class PlanStore
         return new Plan(id, stored.Name, stored.Description, stored.QuotaBytes, stored.PublicWebPresence,
             stored.PublicEmail, stored.EmailAliases, stored.ForSale,
             (stored.Prices ?? []).Select(p => new PlanPrice(p.Months, p.AmountCents)).OrderBy(p => p.Months).ToList(),
-            stored.SortOrder, stored.CreatedAt, stored.UpdatedAt, stored.Recommended);
+            stored.SortOrder, stored.CreatedAt, stored.UpdatedAt, stored.Recommended, Math.Max(1, stored.Seats));
     }
 
     private static PlanPrice CheckPrice(int months, long amountCents)
@@ -522,6 +536,22 @@ public class PlanStore
         if (quotaBytes <= 0)
         {
             throw new InvalidPlanRequestException("quotaBytes must be more than 0; there is no unlimited");
+        }
+    }
+
+    // Every member of a group plan gets at least SubscriptionStore.MinimumShareBytes of its pool; a plan for one may be
+    // any size
+    private static void CheckSeats(int seats, long quotaBytes)
+    {
+        if (seats is < 1 or > SubscriptionStore.MostSeats)
+        {
+            throw new InvalidPlanRequestException($"seats must be between 1 and {SubscriptionStore.MostSeats}");
+        }
+        if (seats > 1 && quotaBytes < seats * SubscriptionStore.MinimumShareBytes)
+        {
+            throw new InvalidPlanRequestException(
+                $"A plan for {seats} needs at least {StorageSize.Format(seats * SubscriptionStore.MinimumShareBytes)}: " +
+                $"{StorageSize.Format(SubscriptionStore.MinimumShareBytes)} each");
         }
     }
 

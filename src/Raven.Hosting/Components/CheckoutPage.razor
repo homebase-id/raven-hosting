@@ -6,13 +6,15 @@
         <h2>@Plan.Name</h2>
         <PlanDetails Plan="Plan" ShowPrices="false" />
         <p class="price">@Price.Text</p>
-        <p class="muted">For @Identity</p>
+        <p class="muted">@(TakesSeat ? $"For {Identity}" : $"Paid by {Identity}, for the people you name")@(Plan.IsGroup ? $", up to {Plan.Seats}" : "")</p>
+        <p class="muted">Renews every @BillingTerm.Name(Price.Months) until you turn it off.</p>
     </div>
 
     <form method="post" action="@($"{UpgradePage.Root}/checkout")" class="card checkout">
         <AntiforgeryField Token="Antiforgery" />
         <input type="hidden" name="planId" value="@Plan.Id">
         <input type="hidden" name="months" value="@Price.Months">
+        <input type="hidden" name="seat" value="@(TakesSeat ? "yes" : "no")">
         <label>Name on card <input autocomplete="off" placeholder="Frodo Baggins"></label>
         <label>Card number <input autocomplete="off" inputmode="numeric" placeholder="4242 4242 4242 4242"></label>
         <div class="row">
@@ -21,7 +23,7 @@
         </div>
         <div class="actions">
             <button type="submit">Complete purchase</button>
-            <a class="button secondary" href="@($"{UpgradePage.Root}/confirm?plan={Uri.EscapeDataString(Plan.Id)}")">Back</a>
+            <a class="button secondary" href="@UpgradePage.ConfirmUrl(Plan.Id)">Back</a>
         </div>
     </form>
 </SitePage>
@@ -30,5 +32,8 @@
     [Parameter] public Plan Plan { get; set; } = null!;
     [Parameter] public PlanPrice Price { get; set; } = null!;
     [Parameter] public string Identity { get; set; } = "";
+
+    /// <summary>Whether the buyer takes a seat: always on a plan for one</summary>
+    [Parameter] public bool TakesSeat { get; set; } = true;
     [Parameter] public Microsoft.AspNetCore.Antiforgery.AntiforgeryTokenSet Antiforgery { get; set; } = null!;
 }

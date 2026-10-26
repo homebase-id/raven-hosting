@@ -11,6 +11,9 @@
     case PlanGrantStatus.Failed:
         <StatusTag Text="failed" Tone="bad" />
         break;
+    case PlanGrantStatus.Superseded:
+        <StatusTag Text="superseded" Tone="plain" />
+        break;
     default:
         <StatusTag Text="pending" Tone="warn" />
         break;

@@ -1,0 +1,315 @@
+@* The owner's own page: invitations waiting for them, their plan as their host says, the subscription they pay for
+   (term, auto-renew, invoices, and the people on it with their shares), or the plan someone else pays for *@
+<SitePage Title="Your plan">
+    @if (Done != null)
+    {
+        <p class="done" role="status">@Done</p>
+    }
+    @if (Error != null)
+    {
+        <p class="problem" role="alert">@Error</p>
+    }
+
+    @foreach (var (view, member) in Invitations)
+    {
+        <div class="card">
+            <h2>@view.Subscription.Owner invited you to @view.PlanName</h2>
+            <p>With @StorageSize.Format(member.QuotaBytes) of storage, on your own identity.</p>
+            <div class="actions">
+                <a class="button" href="@($"/join/{member.InviteToken}")">See the invitation</a>
+            </div>
+        </div>
+    }
+
+    @if (Now != null)
+    {
+        <YourPlanNow Now="Now" PlanName="@(CurrentPlanName ?? "")" />
+    }
+
+    @if (Owned != null)
+    {
+        var s = Owned.Subscription;
+        var grace = s.State(_now) == "grace";
+        <section class="card" aria-labelledby="owned-heading">
+            <p class="muted">You pay for</p>
+            <h2 id="owned-heading">@Owned.PlanName</h2>
+            @if (grace)
+            {
+                <p class="problem">It ran out on @Day(s.PeriodEnd). @(Owned.OpenInvoice != null ? "Pay" : "Turn auto-renew on and pay") by @Day(s.GraceEndsAt) to keep it; after that@(Owned.Holding.Count > 0 ? ", everyone on it goes to the free plan" : ", it ends").</p>
+            }
+            <dl class="facts">
+                <dt>Price</dt>
+                <dd>@s.Price.Text</dd>
+                <dt>@(s.AutoRenew ? "Renews" : "Ends")</dt>
+                <dd>@Day(s.PeriodEnd)</dd>
+                <dt>Auto-renew</dt>
+                <dd>
+                    @(s.AutoRenew ? "On" : "Off")
+                    <form method="post" action="@($"{AccountPages.Root}/auto-renew")" class="inline-form">
+                        <AntiforgeryField Token="Antiforgery" />
+                        <input type="hidden" name="on" value="@(s.AutoRenew ? "false" : "true")">
+                        <button type="submit" class="link-button">Turn @(s.AutoRenew ? "off" : "on")</button>
+                    </form>
+                </dd>
+                @if (s.IsGroup)
+                {
+                    <dt>People</dt>
+                    <dd>@Owned.Holding.Count of @s.Seats, sharing @StorageSize.Format(s.PoolBytes)</dd>
+                }
+            </dl>
+            <div class="actions">
+                <a class="button secondary" href="@UpgradePage.Root">Change plan</a>
+            </div>
+        </section>
+
+        @if (Owned.Invoices.Count > 0)
+        {
+            <section class="card" aria-labelledby="invoices-heading">
+                <h2 id="invoices-heading">Billing</h2>
+                <table class="members">
+                    <thead><tr><th>For</th><th>Amount</th><th>Status</th></tr></thead>
+                    <tbody>
+                        @foreach (var invoice in Owned.Invoices.Where(i => i.Status != InvoiceStatus.Void).Take(6))
+                        {
+                            <tr>
+                                <td>@Day(invoice.PeriodStart) to @Day(invoice.PeriodEnd)</td>
+                                <td>@invoice.Price.Text</td>
+                                <td>
+                                    @if (invoice.Status == InvoiceStatus.Paid)
+                                    {
+                                        <span>Paid @Day(invoice.PaidAt!.Value)</span>
+                                    }
+                                    else if (CanPay)
+                                    {
+                                        <form method="post" action="@($"{AccountPages.Root}/invoices/{invoice.Id}/pay")" class="inline-form">
+                                            <AntiforgeryField Token="Antiforgery" />
+                                            <span class="tag warn">Due @Day(invoice.DueAt)</span>
+                                            <button type="submit" class="button small">Pay (test)</button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <span class="tag warn">Due @Day(invoice.DueAt)</span>
+                                        <span class="hint">Paying here opens soon; until then, contact us to pay.</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </section>
+        }
+
+        <section class="card" aria-labelledby="people-heading">
+            <h2 id="people-heading">@(s.IsGroup ? "People on it" : "Who it is for")</h2>
+            @if (s.IsGroup)
+            {
+                <p class="muted">@Owned.Holding.Count of @s.Seats seats · @StorageSize.Format(s.PoolBytes) to share · each gets at least @StorageSize.Format(SubscriptionStore.MinimumShareBytes)</p>
+            }
+
+            @if (Owned.Holding.Count == 0)
+            {
+                <p>Nobody yet.</p>
+            }
+            else
+            {
+                <table class="members">
+                    <thead><tr><th>Identity</th><th>Status</th>@if (s.IsGroup) { <th>Share</th> }<th></th></tr></thead>
+                    <tbody>
+                        @foreach (var m in Owned.Holding)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="who-cell">
+                                        <img src="@PublicProfiles.ImageUrl(m.Identity)" alt="" width="32" height="32" referrerpolicy="no-referrer">
+                                        <span>@m.Identity@(m.Identity == Identity ? " (you)" : "")</span>
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (m.Status == MemberStatus.Invited)
+                                    {
+                                        <span class="tag warn">@(m.InviteExpired(_now) ? "Link expired" : "Invited")</span>
+                                        @if (!m.InviteExpired(_now) && m.InviteToken != null)
+                                        {
+                                            <label class="copy-link">
+                                                <span class="visually-hidden">Join link for @m.Identity</span>
+                                                <input readonly value="@AccountPages.JoinUrl(Options, m.InviteToken)" onfocus="this.select()">
+                                            </label>
+                                            <span class="hint">Send this to them; it works for @m.Identity only, until @Day(m.InviteExpiresAt!.Value).</span>
+                                        }
+                                    }
+                                    else if (m.IsLeaving)
+                                    {
+                                        <span class="tag">Leaving</span>
+                                        <span class="hint">Keeps it until @Day(m.KeepsUntil!.Value)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="tag">Joined</span>
+                                    }
+                                </td>
+                                @if (s.IsGroup)
+                                {
+                                    <td>
+                                        <label class="share">
+                                            <span class="visually-hidden">Share for @m.Identity, in GB</span>
+                                            <input form="shares" name="@($"share-{m.Id}")" inputmode="decimal" value="@Gb(m.QuotaBytes)" disabled="@m.IsLeaving">
+                                            GB
+                                        </label>
+                                    </td>
+                                }
+                                <td>
+                                    @if (m.Status == MemberStatus.Invited)
+                                    {
+                                        <form method="post" action="@($"{AccountPages.Root}/members/{m.Id}/link")" class="inline-form">
+                                            <AntiforgeryField Token="Antiforgery" />
+                                            <button type="submit" class="link-button">New link</button>
+                                        </form>
+                                    }
+                                    @if (!m.IsLeaving)
+                                    {
+                                        <form method="post" action="@($"{AccountPages.Root}/members/{m.Id}/remove")" class="inline-form"
+                                              onsubmit="return confirm('@(RemoveQuestion(m))')">
+                                            <AntiforgeryField Token="Antiforgery" />
+                                            <button type="submit" class="link-button">@(m.Status == MemberStatus.Invited ? "Take back" : m.Identity == Identity ? "Give up my seat" : "Remove")</button>
+                                        </form>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                @if (s.IsGroup)
+                {
+                    <p class="muted">Unassigned: @StorageSize.Format(Owned.UnassignedBytes)</p>
+                    <form id="shares" method="post" action="@($"{AccountPages.Root}/shares")" class="inline-form">
+                        <AntiforgeryField Token="Antiforgery" />
+                    </form>
+                    <form id="split" method="post" action="@($"{AccountPages.Root}/split")" class="inline-form">
+                        <AntiforgeryField Token="Antiforgery" />
+                    </form>
+                    <div class="actions">
+                        <button type="submit" form="shares" class="button">Save shares</button>
+                        <button type="submit" form="split" class="button secondary-outline">Split evenly</button>
+                    </div>
+                }
+            }
+
+            @if (Owned.SeatsLeft > 0)
+            {
+                <form method="post" action="@($"{AccountPages.Root}/members")" class="row-form add-member">
+                    <AntiforgeryField Token="Antiforgery" />
+                    <label>
+                        Add someone
+                        <input name="identity" required autocomplete="off" inputmode="url" autocapitalize="none" spellcheck="false"
+                               placeholder="sam.homebase.id">
+                    </label>
+                    @if (s.IsGroup)
+                    {
+                        <label>
+                            Share, GB
+                            <input name="share" inputmode="decimal" size="6" placeholder="@Gb(DefaultShare(Owned))">
+                        </label>
+                    }
+                    <button type="submit" class="button">Add</button>
+                </form>
+                <p class="hint">They get a link to join, which works only when they sign in as that identity.</p>
+                @if (Owned.OwnerSeat == null)
+                {
+                    <form method="post" action="@($"{AccountPages.Root}/members")" class="actions">
+                        <AntiforgeryField Token="Antiforgery" />
+                        <input type="hidden" name="identity" value="@Identity">
+                        <button type="submit" class="button secondary-outline">Use a seat myself</button>
+                    </form>
+                }
+            }
+            else if (s.IsGroup)
+            {
+                <p class="hint">All @s.Seats seats are taken. Remove someone to add another, or choose a bigger plan.</p>
+            }
+        </section>
+    }
+
+    @if (Covering != null && Membership != null)
+    {
+        <section class="card" aria-labelledby="covering-heading">
+            <p class="muted">Paid for by @Covering.Subscription.Owner</p>
+            <h2 id="covering-heading">@Covering.PlanName</h2>
+            <dl class="facts">
+                <dt>Your share</dt>
+                <dd>@StorageSize.Format(Membership.QuotaBytes)</dd>
+                <dt>Until</dt>
+                <dd>@(Membership.IsLeaving ? Day(Membership.KeepsUntil!.Value) : $"{Day(Covering.Subscription.PeriodEnd)}{(Covering.Subscription.AutoRenew ? ", then it renews" : "")}")</dd>
+            </dl>
+            @if (Membership.IsLeaving)
+            {
+                <p class="muted">You are off this plan; after @Day(Membership.KeepsUntil!.Value) you go to the free plan.</p>
+            }
+            else
+            {
+                <form method="post" action="@($"{AccountPages.Root}/leave")" class="actions"
+                      onsubmit="return confirm('Leave this plan? You keep it for @PlanService.Grace.Days days, then go to the free plan.')">
+                    <AntiforgeryField Token="Antiforgery" />
+                    <button type="submit" class="button secondary-outline">Leave this plan</button>
+                </form>
+            }
+        </section>
+    }
+
+    @if (Owned == null && Covering == null)
+    {
+        <div class="card">
+            <p>You do not pay for a plan, and nobody has you on theirs.</p>
+            <div class="actions">
+                <a class="button" href="@UpgradePage.Root">See the plans</a>
+            </div>
+        </div>
+    }
+</SitePage>
+
+@code {
+    [Parameter] public string Identity { get; set; } = "";
+
+    /// <summary>What they have now, as their host says; null when it cannot say just now</summary>
+    [Parameter] public IdentityOnHost? Now { get; set; }
+    [Parameter] public string? CurrentPlanName { get; set; }
+
+    /// <summary>The subscription they pay for; null when none</summary>
+    [Parameter] public SubscriptionView? Owned { get; set; }
+
+    /// <summary>Someone else's subscription they are on, and their place on it; null when none</summary>
+    [Parameter] public SubscriptionView? Covering { get; set; }
+    [Parameter] public SubscriptionMember? Membership { get; set; }
+
+    [Parameter] public List<(SubscriptionView View, SubscriptionMember Member)> Invitations { get; set; } = [];
+
+    /// <summary>Whether they may pay an invoice here: the test checkout, for those who may buy</summary>
+    [Parameter] public bool CanPay { get; set; }
+
+    [Parameter] public UpgradeOptions Options { get; set; } = null!;
+    [Parameter] public Microsoft.AspNetCore.Antiforgery.AntiforgeryTokenSet Antiforgery { get; set; } = null!;
+    [Parameter] public string? Done { get; set; }
+    [Parameter] public string? Error { get; set; }
+
+    private readonly long _now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+    private static string Day(long unixMs) => DateTimeOffset.FromUnixTimeMilliseconds(unixMs).ToString("d MMMM yyyy");
+
+    // GB, as the share fields take them: 50, 12.5
+    private static string Gb(long bytes) =>
+        Math.Round((decimal)bytes / (1L << 30), 1).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+
+    // What a new member gets when no share is typed: an equal part of what is unassigned between the seats left
+    private static long DefaultShare(SubscriptionView view)
+    {
+        var each = view.UnassignedBytes / Math.Max(1, view.SeatsLeft) / SubscriptionStore.MinimumShareBytes * SubscriptionStore.MinimumShareBytes;
+        return each >= SubscriptionStore.MinimumShareBytes ? each : view.UnassignedBytes;
+    }
+
+    private string RemoveQuestion(SubscriptionMember m) => m.Status == MemberStatus.Invited
+        ? $"Take back the invitation to {m.Identity}?"
+        : m.Identity == Identity
+            ? $"Give up your seat? You keep the plan for {PlanService.Grace.Days} days, then go to the free plan; you still pay for it."
+            : $"Remove {m.Identity}? They keep the plan for {PlanService.Grace.Days} days, then go to the free plan.";
+}

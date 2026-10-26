@@ -76,25 +76,127 @@
             </section>
 
             <section class="panel">
-                <h2 class="panel-title">Extend</h2>
-                @if (Row?.IsPaid == true)
+                <h2 class="panel-title">Paid plan</h2>
+                @if (Row?.Paid is { } paid && paid.Owner != Identity)
                 {
-                    <p class="mb-3 text-sm text-muted">Adds time to the paid term, from when it runs out (or from today, if that has passed), free of charge.</p>
-                    <form method="post" action="@($"{AdminPages.SubscriptionUrl(Identity)}/extend")" class="flex flex-wrap items-end gap-3">
-                        <Csrf Admin="Admin" />
-                        <label class="field">
-                            Months
-                            <input class="input w-28" name="months" type="number" min="1" max="@BillingTerm.LongestMonths" value="1" required>
-                        </label>
-                        <button type="submit" class="btn">Extend</button>
-                    </form>
+                    <p class="text-sm">On <a class="link" href="@AdminPages.SubscriptionUrl(paid.Owner)">@paid.Owner</a>'s plan, which they pay for and manage.</p>
+                    @if (Row.Member is { } member)
+                    {
+                        <p class="mt-2 text-sm text-muted">Its share: @StorageSize.Format(member.QuotaBytes)@(member.IsLeaving ? $"; leaving, keeps it until {AdminForm.Day(member.KeepsUntil)}" : "")</p>
+                    }
+                }
+                else if (Owned == null)
+                {
+                    <p class="text-sm text-muted">Pays for nothing: its plan has no end.</p>
                 }
                 else
                 {
-                    <p class="text-sm text-muted">Only a paid subscription runs out; this one has no end.</p>
+                    <p class="text-sm">Pays for <a class="link" href="#paid">@Owned.PlanName</a>, below.</p>
                 }
             </section>
         </div>
+
+        @if (Owned != null)
+        {
+            var s = Owned.Subscription;
+            <section class="panel mt-6" id="paid">
+                <h2 class="panel-title">Pays for @Owned.PlanName</h2>
+                <dl class="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-[9rem_1fr]">
+                    <dt class="font-semibold text-muted">Price</dt>
+                    <dd>@s.Price.Text</dd>
+                    <dt class="font-semibold text-muted">Term</dt>
+                    <dd class="flex flex-wrap items-center gap-2">
+                        @AdminForm.Day(s.PeriodStart) to @AdminForm.Day(s.PeriodEnd)
+                        @if (s.State(Now) == "grace")
+                        {
+                            <StatusTag Text="@($"in grace, ends {AdminForm.Day(s.GraceEndsAt)}")" Tone="bad" />
+                        }
+                    </dd>
+                    <dt class="font-semibold text-muted">Auto-renew</dt>
+                    <dd class="flex flex-wrap items-center gap-3">
+                        @(s.AutoRenew ? "on" : $"off{(s.CanceledAt is { } at ? $" since {AdminForm.Day(at)}" : "")}")
+                        <form method="post" action="@($"{AdminPages.SubscriptionUrl(Identity)}/auto-renew")">
+                            <Csrf Admin="Admin" />
+                            <input type="hidden" name="on" value="@(s.AutoRenew ? "false" : "true")">
+                            <button type="submit" class="btn btn-small btn-secondary">Turn @(s.AutoRenew ? "off" : "on")</button>
+                        </form>
+                    </dd>
+                    <dt class="font-semibold text-muted">Seats</dt>
+                    <dd>@Owned.Holding.Count of @s.Seats · @StorageSize.Format(s.PoolBytes)@(s.IsGroup ? $", {StorageSize.Format(Owned.UnassignedBytes)} unassigned" : "")</dd>
+                </dl>
+
+                @if (Owned.Members.Count > 0)
+                {
+                    <div class="table-wrap mt-5">
+                        <table class="table">
+                            <thead><tr><th>Member</th><th>Status</th><th>Share</th><th>Since</th></tr></thead>
+                            <tbody class="divide-y divide-line">
+                                @foreach (var m in Owned.Members)
+                                {
+                                    <tr class="@(m.HoldsSeat ? "" : "opacity-60")">
+                                        <td><a class="link" href="@AdminPages.SubscriptionUrl(m.Identity)">@m.Identity</a></td>
+                                        <td class="text-xs">@MemberState(m)</td>
+                                        <td class="text-xs whitespace-nowrap">@StorageSize.Format(m.QuotaBytes)</td>
+                                        <td class="text-xs whitespace-nowrap text-muted">@AdminForm.Day(m.JoinedAt ?? m.InvitedAt)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                <h3 class="mt-6 mb-2 text-sm font-semibold">Invoices</h3>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead><tr><th>Term</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+                        <tbody class="divide-y divide-line">
+                            @foreach (var invoice in Owned.Invoices)
+                            {
+                                <tr>
+                                    <td class="text-xs whitespace-nowrap">@AdminForm.Day(invoice.PeriodStart) to @AdminForm.Day(invoice.PeriodEnd)</td>
+                                    <td class="text-xs whitespace-nowrap">@invoice.Price.Text</td>
+                                    <td class="text-xs">
+                                        @switch (invoice.Status)
+                                        {
+                                            case InvoiceStatus.Paid:
+                                                <span>paid @AdminForm.Day(invoice.PaidAt) <span class="text-muted">(@invoice.PaidBy@(invoice.Reference != null ? $", {invoice.Reference}" : ""))</span></span>
+                                                break;
+                                            case InvoiceStatus.Open:
+                                                <StatusTag Text="@($"open, due {AdminForm.Day(invoice.DueAt)}")" Tone="warn" />
+                                                break;
+                                            default:
+                                                <span class="text-muted">void</span>
+                                                break;
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (invoice.Status == InvoiceStatus.Open)
+                                        {
+                                            <form method="post" action="@($"{AdminPages.SubscriptionUrl(Identity)}/invoices/{invoice.Id}/paid")" class="flex flex-wrap items-center gap-2">
+                                                <Csrf Admin="Admin" />
+                                                <input class="input w-40" name="reference" maxlength="128" placeholder="Receipt or note" aria-label="Reference">
+                                                <button type="submit" class="btn btn-small">Mark paid</button>
+                                            </form>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3 class="mt-6 mb-2 text-sm font-semibold">Extend</h3>
+                <p class="mb-3 text-sm text-muted">Adds time to the term, from when it runs out (or from today, if that has passed), free of charge.</p>
+                <form method="post" action="@($"{AdminPages.SubscriptionUrl(Identity)}/extend")" class="flex flex-wrap items-end gap-3">
+                    <Csrf Admin="Admin" />
+                    <label class="field">
+                        Months
+                        <input class="input w-28" name="months" type="number" min="1" max="@BillingTerm.LongestMonths" value="1" required>
+                    </label>
+                    <button type="submit" class="btn">Extend</button>
+                </form>
+            </section>
+        }
 
         <section class="panel mt-6">
             <h2 class="panel-title">Add-ons</h2>
@@ -190,7 +292,7 @@
                     </select>
                 </label>
             </div>
-            <p class="mt-4 text-xs text-muted">A free subscription with no end, replacing the current one@(Row?.IsPaid == true ? ", which is paid: what is left of its term is not carried over" : "").</p>
+            <p class="mt-4 text-xs text-muted">A free plan with no end, replacing the current one@(Row?.IsPaid == true ? ", which is from a paid subscription: it stops covering this identity, and is not refunded" : "").</p>
             <div class="mt-4"><button type="submit" class="btn">Change the plan</button></div>
         </form>
 
@@ -228,7 +330,7 @@
                                             <span class="block text-muted">@grant.Note</span>
                                         }
                                     </td>
-                                    <td class="text-xs whitespace-nowrap">@(grant.EndsAt != null ? AdminForm.Day(grant.EndsAt) : "no end")</td>
+                                    <td class="text-xs whitespace-nowrap">@(grant.SubscriptionId != null ? "paid plan" : "no end")</td>
                                     <td>
                                         <SyncTag Grant="grant" />
                                         @if (grant.LastError != null && grant.Status != PlanGrantStatus.Applied)
@@ -263,11 +365,23 @@
     [Parameter] public List<Plan> Plans { get; set; } = [];
     [Parameter] public IReadOnlyList<string> Hosts { get; set; } = [];
 
+    /// <summary>The paid subscription it owns, with its members and invoices; null when it pays for none</summary>
+    [Parameter] public SubscriptionView? Owned { get; set; }
+
+    private long Now => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+    private string MemberState(SubscriptionMember m) => m.Status switch
+    {
+        MemberStatus.Invited => m.InviteExpired(Now) ? "invited, link expired" : "invited",
+        MemberStatus.Active => m.Identity == Owned?.Subscription.Owner ? "joined (owner)" : "joined",
+        MemberStatus.Removed or MemberStatus.Left when m.IsLeaving => $"{m.Status}, keeps it until {AdminForm.Day(m.KeepsUntil)}",
+        _ => m.Status,
+    };
+
     private static string Source(PlanGrant grant) => grant.Source switch
     {
-        PlanGrantSource.Purchase => grant.PriceAmountCents is { } cents && grant.PriceMonths is { } months
-            ? $"Bought, {new PlanPrice(months, cents).Text}"
-            : "Bought",
+        PlanGrantSource.Purchase => "Bought",
+        PlanGrantSource.Group => "Joined a group plan",
         PlanGrantSource.Code => "Code signup",
         PlanGrantSource.Expiry => "Paid term ran out",
         _ => "Admin",

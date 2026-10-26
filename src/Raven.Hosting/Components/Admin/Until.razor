@@ -1,5 +1,5 @@
 @* When a subscription runs out, and whether it is soon or past: "no end" for a free one *@
-@if (Row.Grant.EndsAt is { } ends)
+@if (Row.EndsAt is { } ends)
 {
     <span>@AdminForm.Day(ends)</span>
     @switch (Row.State)
