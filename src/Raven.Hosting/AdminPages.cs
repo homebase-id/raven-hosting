@@ -132,7 +132,9 @@ public static class AdminPages
         admin.MapGet("/plans", async (HttpContext context, PlanStore plans) =>
             await Show<AdminPlans>(context, new { Plans = await plans.ListAsync() }));
 
-        admin.MapGet("/plans/new", async (HttpContext context) => await Show<AdminPlanForm>(context, new { }));
+        // Typed Task<IResult>: a lambda taking only HttpContext would otherwise bind as a RequestDelegate, whose result
+        // is thrown away, and answer an empty 200
+        admin.MapGet("/plans/new", Task<IResult> (HttpContext context) => Show<AdminPlanForm>(context, new { }));
 
         admin.MapPost("/plans/new", async (HttpContext context, IFormCollection form, PlanStore plans) =>
         {

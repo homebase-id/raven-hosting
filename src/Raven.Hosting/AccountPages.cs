@@ -74,7 +74,7 @@ public static class AccountPages
                 var removed = await subscriptions.RemoveAsync(owned.Subscription.Id, identity, id);
                 return removed.IsLeaving
                     ? $"{removed.Identity} is off your plan. They keep it until {Day(removed.KeepsUntil!.Value)}, then go to the free plan."
-                    : $"{removed.Identity}'s invitation is taken back.";
+                    : $"{removed.Identity}'s invitation is cancelled.";
             }));
 
         app.MapPost($"{Root}/members/{{id:long}}/link", (HttpContext context, long id, IFormCollection form) =>

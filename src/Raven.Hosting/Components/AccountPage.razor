@@ -171,7 +171,7 @@
                                         <form method="post" action="@($"{AccountPages.Root}/members/{m.Id}/remove")" class="inline-form"
                                               onsubmit="return confirm('@(RemoveQuestion(m))')">
                                             <AntiforgeryField Token="Antiforgery" />
-                                            <button type="submit" class="link-button">@(m.Status == MemberStatus.Invited ? "Take back" : m.Identity == Identity ? "Give up my seat" : "Remove")</button>
+                                            <button type="submit" class="link-button">@(m.Status == MemberStatus.Invited ? "Cancel invitation" : m.Identity == Identity ? "Give up my seat" : "Remove")</button>
                                         </form>
                                     }
                                 </td>
@@ -308,7 +308,7 @@
     }
 
     private string RemoveQuestion(SubscriptionMember m) => m.Status == MemberStatus.Invited
-        ? $"Take back the invitation to {m.Identity}?"
+        ? $"Cancel the invitation to {m.Identity}? Their link stops working."
         : m.Identity == Identity
             ? $"Give up your seat? You keep the plan for {PlanService.Grace.Days} days, then go to the free plan; you still pay for it."
             : $"Remove {m.Identity}? They keep the plan for {PlanService.Grace.Days} days, then go to the free plan.";

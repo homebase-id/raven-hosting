@@ -205,7 +205,7 @@ hosts are told. Where an identity's plan came from:
 - **One plan at a time.** An identity is an active member of one subscription at most (a unique index). Joining
   another leaves the one it was on at once; on a plan for one it owns, auto-renew is turned off.
 - **Leaving.** A member removed by the owner, or who leaves, keeps the plan, and its seat and share stay held, for
-  **14 days' grace** (`PlanService.Grace`); then it goes to the `free` plan. A taken-back or declined invitation frees
+  **14 days' grace** (`PlanService.Grace`); then it goes to the `free` plan. A cancelled or declined invitation frees
   its seat at once.
 - **Renewing.** With auto-renew on, an `open` invoice for the next term is made 7 days before the term runs out
   (`SubscriptionService.InvoiceAhead`), at the price bought. Paid (by an admin's **Mark paid**, or the owner's test
@@ -298,8 +298,8 @@ The public pages, in `SitePages.cs`, on the same Razor components and stylesheet
 - **`/account`** ("Your plan" in the header, for someone signed in; `/sign-in?next=account` and back otherwise): their
   plan as their host says; invitations waiting for them; the subscription they pay for, with its price, when it
   renews or ends, **auto-renew** on or off, **Change plan**, its invoices (an open one paid with the test checkout,
-  for those who may buy), and the people on it with their shares, join links, **New link**, **Remove** and **Take
-  back**, **Save shares**, **Split evenly**, **Add someone**, **Use a seat myself**; or the plan someone else pays
+  for those who may buy), and the people on it with their shares, join links, **New link**, **Remove** and **Cancel
+  invitation**, **Save shares**, **Split evenly**, **Add someone**, **Use a seat myself**; or the plan someone else pays
   for that they are on, with **Leave this plan**. ([Subscriptions](#subscriptions) has the rules.)
 - **`/join/<token>`**: a join link. Not signed in, it signs them in (`/sign-in?next=join/<token>`) and comes back.
   Signed in as the identity named, it shows whose plan, their share, what it gives, and what happens to the plan
