@@ -34,8 +34,9 @@ public record SubscriptionView(Subscription Subscription, List<SubscriptionMembe
 /// <list type="bullet">
 /// <item>Buying a plan makes a subscription the buyer owns, paid for one term by an invoice. Someone owns one at a
 /// time: buying again changes its plan, from now.</item>
-/// <item>It covers its members, up to the plan's seats. The owner need not be one. Each member gets its share of the
-/// pool; on a plan for one, the whole of it. Shares are at least <see cref="SubscriptionStore.MinimumShareBytes"/>.</item>
+/// <item>It covers its members, up to the plan's seats. The owner is always one of them: they cannot leave their own
+/// plan, nor join someone else's group plan while theirs runs. Each member gets its share of the pool; on a plan for
+/// one, the whole of it. Shares are at least <see cref="SubscriptionStore.MinimumShareBytes"/>.</item>
 /// <item>The owner names members; each joins with its link, signed in as itself. An identity is an active member of one
 /// subscription at most: joining another leaves the one it was on, and turns auto-renew off on a plan for one it owns.</item>
 /// <item>A member removed, or who leaves, keeps the plan and its seat for <see cref="PlanService.Grace"/>, then goes to
@@ -130,13 +131,12 @@ public class SubscriptionService(
 
     /// <summary>
     /// The owner buys the plan for the term, paid now (the test checkout, an admin): a new subscription, or the plan of
-    /// the one they own changed, from now. A plan for one is for the owner; on a group plan they choose whether they
-    /// take a seat. Changing to a plan with fewer seats than members, or less storage than their shares, is refused.
+    /// the one they own changed, from now. The owner always takes a seat. Changing to a plan with fewer seats than
+    /// members, or less storage than their shares, is refused.
     /// </summary>
-    public async Task<Subscription> BuyAsync(string owner, Plan plan, PlanPrice price, bool ownerTakesSeat,
-        string? host, string paidBy, string? reference = null, string? madeBy = null)
+    public async Task<Subscription> BuyAsync(string owner, Plan plan, PlanPrice price, string? host, string paidBy,
+        string? reference = null, string? madeBy = null)
     {
-        ownerTakesSeat = ownerTakesSeat || !plan.IsGroup;
         await _lock.WaitAsync();
         try
         {
@@ -147,18 +147,15 @@ public class SubscriptionService(
                 await PaidInvoiceAsync(created, price, created.PeriodStart, paidBy, reference);
                 logger.LogInformation("{owner} bought {planId} for {term} (subscription {id}, {paidBy})", owner, plan.Id,
                     BillingTerm.Name(price.Months), created.Id, paidBy);
-                if (ownerTakesSeat)
-                {
-                    await AddSeatAsync(created, owner, ShareForNewSeat(await ViewOfAsync(created)), host,
-                        $"Bought {plan.Name}, {price.Text}");
-                }
+                await AddSeatAsync(created, owner, ShareForNewSeat(await ViewOfAsync(created)), host,
+                    $"Bought {plan.Name}, {price.Text}");
                 return created;
             }
 
             // A plan change: the members it has must fit the new one
             var view = await ViewOfAsync(existing);
             var holding = view.Holding;
-            var addsOwner = ownerTakesSeat && holding.All(m => m.Identity != owner);
+            var addsOwner = holding.All(m => m.Identity != owner);
             var seatsNeeded = holding.Count + (addsOwner ? 1 : 0);
             if (seatsNeeded > plan.Seats)
             {
@@ -274,11 +271,14 @@ public class SubscriptionService(
             var view = await OwnViewAsync(subscriptionId, owner);
             var member = view.Members.FirstOrDefault(m => m.Id == memberId) ??
                          throw new SubscriptionRefusedException("They are not on your plan.");
+            if (member.Identity == owner && member.Status == MemberStatus.Active)
+            {
+                throw new SubscriptionRefusedException(OwnerStays);
+            }
             var removed = member.Status switch
             {
                 MemberStatus.Invited => await store.EndMemberAsync(member.Id, MemberStatus.Removed, owner, dropNow: true, Now),
-                MemberStatus.Active => await store.EndMemberAsync(member.Id,
-                    member.Identity == owner ? MemberStatus.Left : MemberStatus.Removed, owner, dropNow: false, Now),
+                MemberStatus.Active => await store.EndMemberAsync(member.Id, MemberStatus.Removed, owner, dropNow: false, Now),
                 _ => throw new SubscriptionRefusedException($"{member.Identity} is already off your plan."),
             };
             logger.LogInformation("{owner} took {identity} off subscription {id}", owner, member.Identity, subscriptionId);
@@ -298,6 +298,10 @@ public class SubscriptionService(
         {
             var member = (await store.MembershipsOfAsync(identity)).FirstOrDefault(m => m.Status == MemberStatus.Active) ??
                          throw new SubscriptionRefusedException("You are not on a plan you can leave.");
+            if (await store.GetAsync(member.SubscriptionId) is { } subscription && subscription.Owner == identity)
+            {
+                throw new SubscriptionRefusedException(OwnerStays);
+            }
             logger.LogInformation("{identity} left subscription {id}", identity, member.SubscriptionId);
             return (await store.EndMemberAsync(member.Id, MemberStatus.Left, identity, dropNow: false, Now))!;
         }
@@ -332,6 +336,13 @@ public class SubscriptionService(
         {
             throw new SubscriptionRefusedException(
                 $"This invitation is for {member.Identity}, and you are signed in as {identity}. Sign out, then open the link again.");
+        }
+        // Someone who pays for a group plan is on it, so cannot move to another
+        if (await store.ActiveOwnedByAsync(identity) is { IsGroup: true } own && own.Id != subscription.Id)
+        {
+            throw new SubscriptionRefusedException(
+                $"You pay for a {(await planStore.GetAsync(own.PlanId))?.Name ?? own.PlanId} plan and are on it, so you cannot join another. " +
+                "Turn its auto-renew off, and you can join once it has ended.");
         }
         return (await ViewOfAsync(subscription), member);
     }
@@ -597,6 +608,9 @@ public class SubscriptionService(
     //
 
     private static long MinimumShare => SubscriptionStore.MinimumShareBytes;
+
+    private const string OwnerStays =
+        "You pay for this plan, so you stay on it. To stop, turn auto-renew off: it then ends with its term.";
 
     // Their own subscription, or refused
     private async Task<SubscriptionView> OwnViewAsync(long subscriptionId, string owner)

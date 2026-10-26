@@ -196,7 +196,8 @@ hosts are told. Where an identity's plan came from:
   paid. Someone owns one at a time: buying again changes its plan and term, paid from then (what was left is not
   refunded); refused while it names more people than the new plan has seats, or their shares add up to more than
   its storage. On a plan for one, the buyer takes the seat and the whole quota.
-- **Group plans.** The owner need not take a seat. They name each person by identity on `/account`; each gets a
+- **Group plans.** The owner always takes a seat: they cannot leave their own plan (to stop, they turn auto-renew
+  off), nor join someone else's group plan while theirs runs. They name each person by identity on `/account`; each gets a
   join link (`/join/<token>`, 32 random bytes, working 14 days, and only signed in as the identity named, so it is
   kept to show the owner again, not hashed) and joins after signing in with YouAuth. A share is held from the
   invitation; by default an equal part, in whole GB, of what is unassigned between the seats left. Shares are at
@@ -299,7 +300,7 @@ The public pages, in `SitePages.cs`, on the same Razor components and stylesheet
   plan as their host says; invitations waiting for them; the subscription they pay for, with its price, when it
   renews or ends, **auto-renew** on or off, **Change plan**, its invoices (an open one paid with the test checkout,
   for those who may buy), and the people on it with their shares, join links, **New link**, **Remove** and **Cancel
-  invitation**, **Save shares**, **Split evenly**, **Add someone**, **Use a seat myself**; or the plan someone else pays
+  invitation**, **Save shares**, **Split evenly**, **Add someone**; or the plan someone else pays
   for that they are on, with **Leave this plan**. ([Subscriptions](#subscriptions) has the rules.)
 - **`/join/<token>`**: a join link. Not signed in, it signs them in (`/sign-in?next=join/<token>`) and comes back.
   Signed in as the identity named, it shows whose plan, their share, what it gives, and what happens to the plan
@@ -344,17 +345,17 @@ Where an owner gets a bigger plan. Their owner console sends them to
    The card with its plan Id is marked "Your plan"; every other says how it compares ("940 GB more than now", "Less
    than you have now (1 TB)"), and one smaller than what the identity stores cannot be chosen, confirmed or bought
    (`PlanFit`). Anything a newer host adds to its answer is kept (`IdentityOnHost.More`).
-4. **Confirm** (`/upgrade/confirm?plan=<id>`): "Change your plan from A to B", on a group plan **Who is it for?**
-   (me and others, taking a seat, or only others), then **How would you like to pay?**, one choice per term (the
+4. **Confirm** (`/upgrade/confirm?plan=<id>`): "Change your plan from A to B" (on a group plan, a note that the buyer takes
+   one of its seats), then **How would you like to pay?**, one choice per term (the
    shortest chosen), and **Continue to checkout**. Someone who already pays for a plan is told this changes it.
-5. **Test checkout** (`/upgrade/checkout?plan=<id>&months=<term>&seat=yes|no`): an order summary with the term's price, and a
+5. **Test checkout** (`/upgrade/checkout?plan=<id>&months=<term>`): an order summary with the term's price, and a
    card form under a banner saying
    **no payment is taken**. The card fields have no names, so the browser never sends them; the server reads only
-   `planId`, `months` and `seat` and ignores anything else. **Complete purchase** posts it. A plan sold for one term needs
+   `planId` and `months` and ignores anything else. **Complete purchase** posts it. A plan sold for one term needs
    no `months`; for several, a term it isn't sold for is a 400 that sends you back to choose.
 6. **The stand-in for payment** (`POST /upgrade/checkout`): it buys the plan for the term, a
    [subscription](#subscriptions) with its first invoice paid by `test-checkout`, which sets the plan on the
-   buyer's host straight away (or keeps trying) if they take a seat, and redirects to done.
+   buyer's host straight away (or keeps trying), and redirects to done.
 7. **Done** (`/upgrade/done?subscription=<id>`, only for the signed-in identity's own): "You're on B", or that the
    change is on its way, or that it failed, with the price and when it renews; then **Back to your Homebase**, or
    on a group plan **Name the people on it** (`/account`).

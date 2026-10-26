@@ -290,7 +290,7 @@ public static class UpgradePage
         });
 
         // Step 3, a test checkout of the term chosen
-        page.MapGet("/checkout", async (HttpContext context, string? plan, int? months, string? seat,
+        page.MapGet("/checkout", async (HttpContext context, string? plan, int? months,
             UpgradeOptions options, UpgradeSession session, PlanStore planStore, IAntiforgery antiforgery,
             PurchaseAccessStore purchaseAccess) =>
         {
@@ -325,16 +325,15 @@ public static class UpgradePage
                 Plan = chosen,
                 Price = price,
                 Identity = signedIn.Identity,
-                TakesSeat = !chosen.IsGroup || seat != "no",
                 Antiforgery = antiforgery.GetAndStoreTokens(context),
             });
         });
 
-        // Completing the test checkout buys the plan for the term: a subscription the owner pays for, its first invoice
-        // paid, which sets the plan on their host if they take a seat. Only planId, months and seat are read; anything
-        // else in the form is ignored
+        // Completing the test checkout buys the plan for the term: a subscription the owner pays for and is on, its first
+        // invoice paid, which sets the plan on their host. Only planId and months are read; anything else in the form is
+        // ignored
         page.MapPost("/checkout", async (HttpContext context, [FromForm] string? planId, [FromForm] int? months,
-            [FromForm] string? seat, UpgradeOptions options, UpgradeSession session, PlanService plans,
+            UpgradeOptions options, UpgradeSession session, PlanService plans,
             PlanStore planStore, PurchaseAccessStore purchaseAccess, SubscriptionService subscriptions) =>
         {
             if (!options.Enabled)
@@ -365,11 +364,10 @@ public static class UpgradePage
                 return ChooseATerm(plan);
             }
 
-            // Not onto a plan smaller than what they store, when they take a seat. A host that cannot say just now does
-            // not stop a purchase: the grant waits for it
-            var takesSeat = !plan.IsGroup || seat != "no";
+            // Not onto a plan for one smaller than what they store (on a group plan they set their own share). A host that
+            // cannot say just now does not stop a purchase: the grant waits for it
             var located = await LocateAsync(context, signedIn, session, plans);
-            if (takesSeat && !plan.IsGroup && located.Error == null && PlanFit.Of(plan, located.Now) is { CanChoose: false } fit)
+            if (!plan.IsGroup && located.Error == null && PlanFit.Of(plan, located.Now) is { CanChoose: false } fit)
             {
                 return TooSmall(plan, fit);
             }
@@ -377,7 +375,7 @@ public static class UpgradePage
 
             try
             {
-                var bought = await subscriptions.BuyAsync(signedIn.Identity, plan, price, takesSeat, signedIn.Host,
+                var bought = await subscriptions.BuyAsync(signedIn.Identity, plan, price, signedIn.Host,
                     "test-checkout", $"test-{Guid.NewGuid():N}");
                 return Results.Redirect($"{Root}/done?subscription={bought.Id}");
             }
