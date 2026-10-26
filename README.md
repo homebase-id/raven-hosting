@@ -193,8 +193,10 @@ hosts are told. Where an identity's plan came from:
 | `expiry` | the service, after a subscription ran out or a member's grace after leaving was over | no end |
 
 - **Buying** (the upgrade page's test checkout, for now) makes a subscription the buyer owns, with its first invoice
-  paid. Someone owns one at a time: buying again changes its plan and term, paid from then (what was left is not
-  refunded); refused while it names more people than the new plan has seats, or their shares add up to more than
+  paid. Someone owns one at a time: buying again changes its plan and term, paid from then. Nothing paid for is lost:
+  what was left of the old term, by its value (price × time left ÷ term), is added to the new term as extra time at
+  the new plan's rate (`SubscriptionService.CarryOver`); checkout shows it, and the plan's history notes it. It is
+  refused while it names more people than the new plan has seats, or their shares add up to more than
   its storage. On a plan for one, the buyer takes the seat and the whole quota.
 - **Group plans.** The owner always takes a seat: they cannot leave their own plan (to stop, they turn auto-renew
   off), nor join someone else's group plan while theirs runs. They name each person by identity on `/account`; each gets a

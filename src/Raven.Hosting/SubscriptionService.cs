@@ -33,7 +33,8 @@ public record SubscriptionView(Subscription Subscription, List<SubscriptionMembe
 /// The rules of paid subscriptions, tracked here rather than by a payment provider (README, "Subscriptions"):
 /// <list type="bullet">
 /// <item>Buying a plan makes a subscription the buyer owns, paid for one term by an invoice. Someone owns one at a
-/// time: buying again changes its plan, from now.</item>
+/// time: buying again changes its plan, from now. Nothing paid for is lost: what was left of the old term, by its value,
+/// is added to the new one as extra time (<see cref="CarryOver"/>).</item>
 /// <item>It covers its members, up to the plan's seats. The owner is always one of them: they cannot leave their own
 /// plan, nor join someone else's group plan while theirs runs. Each member gets its share of the pool; on a plan for
 /// one, the whole of it. Shares are at least <see cref="SubscriptionStore.MinimumShareBytes"/>.</item>
@@ -169,7 +170,16 @@ public class SubscriptionService(
                     $"{plan.Storage}. Lower them first.");
             }
 
+            // What was left of the term paid for becomes extra time on the new plan, at the new plan's rate
+            var carry = CarryOver(existing, price, Now);
+            var oldName = (await planStore.GetAsync(existing.PlanId))?.Name ?? existing.PlanId;
             var changed = (await store.ChangePlanAsync(existing.Id, plan, price, Now))!;
+            if (carry.ExtraMs > 0)
+            {
+                changed = (await store.SetPeriodAsync(changed.Id, changed.PeriodStart, changed.PeriodEnd + carry.ExtraMs, Now))!;
+                logger.LogInformation("Subscription {id}: {value} left of {from} carried over to {planId} as {extra}",
+                    existing.Id, Money.Format(carry.ValueCents), existing.PlanId, plan.Id, Describe(carry.ExtraMs));
+            }
             await store.VoidOpenInvoicesAsync(existing.Id);
             await PaidInvoiceAsync(changed, price, changed.PeriodStart, paidBy, reference);
             logger.LogInformation("{owner} changed subscription {id} from {from} to {planId} for {term} ({paidBy})",
@@ -184,7 +194,9 @@ public class SubscriptionService(
             {
                 if (member.Status == MemberStatus.Active || member.IsLeaving)
                 {
-                    await GrantAsync(changed, member, $"Plan changed to {plan.Name}", member.Identity == owner ? host : null);
+                    await GrantAsync(changed, member,
+                        $"Plan changed to {plan.Name}" + (carry.ExtraMs > 0 ? $"; {Describe(carry.ExtraMs)} carried over from {oldName}" : ""),
+                        member.Identity == owner ? host : null);
                 }
             }
             if (addsOwner)
@@ -606,6 +618,42 @@ public class SubscriptionService(
     }
 
     //
+
+    /// <summary>
+    /// What is left of a running subscription's paid term, by its value, as time on a new plan bought now: the unused
+    /// part of what was paid (price × time left ÷ term), turned into time at the new price's rate. None for a free plan,
+    /// a term already run out, or a new price of 0.
+    /// </summary>
+    /// <returns>The value left, in cents, and the time it buys on the new plan, in milliseconds</returns>
+    public static (long ValueCents, long ExtraMs) CarryOver(Subscription? from, PlanPrice to, long now)
+    {
+        if (from is not { IsActive: true } || from.PriceCents <= 0 || to.AmountCents <= 0 || now >= from.PeriodEnd ||
+            from.PeriodEnd <= from.PeriodStart)
+        {
+            return (0, 0);
+        }
+        var left = (decimal)(from.PeriodEnd - now) / (from.PeriodEnd - from.PeriodStart);
+        var value = from.PriceCents * left;
+        var newTerm = PlanGrantStore.TermEnd(now, to.Months) - now;
+        return ((long)decimal.Round(value), (long)decimal.Round(value / to.AmountCents * newTerm));
+    }
+
+    /// <summary>A stretch of time as people read it: "12 days", "about 3 months"</summary>
+    public static string Describe(long ms)
+    {
+        var days = ms / 86_400_000d;
+        if (days < 1)
+        {
+            return "less than a day";
+        }
+        if (days < 45)
+        {
+            var whole = (int)Math.Round(days);
+            return whole == 1 ? "1 day" : $"{whole} days";
+        }
+        var months = (int)Math.Round(days / 30.44);
+        return months == 1 ? "about a month" : $"about {months} months";
+    }
 
     private static long MinimumShare => SubscriptionStore.MinimumShareBytes;
 

@@ -292,7 +292,7 @@ public static class UpgradePage
         // Step 3, a test checkout of the term chosen
         page.MapGet("/checkout", async (HttpContext context, string? plan, int? months,
             UpgradeOptions options, UpgradeSession session, PlanStore planStore, IAntiforgery antiforgery,
-            PurchaseAccessStore purchaseAccess) =>
+            PurchaseAccessStore purchaseAccess, SubscriptionService subscriptions, TimeProvider time) =>
         {
             if (!options.Enabled)
             {
@@ -320,11 +320,18 @@ public static class UpgradePage
                 return ChooseATerm(chosen);
             }
 
+            // A plan they already pay for: what is left of it is added to this one as extra time
+            var owned = await subscriptions.OwnedByAsync(signedIn.Identity);
+            var now = time.GetUtcNow().ToUnixTimeMilliseconds();
+            var carry = SubscriptionService.CarryOver(owned?.Subscription, price, now);
             return Show<CheckoutPage>(new
             {
                 Plan = chosen,
                 Price = price,
                 Identity = signedIn.Identity,
+                CarriedFrom = carry.ExtraMs > 0 ? owned!.PlanName : null,
+                Carried = carry.ExtraMs > 0 ? SubscriptionService.Describe(carry.ExtraMs) : null,
+                Until = PlanGrantStore.TermEnd(now, price.Months) + carry.ExtraMs,
                 Antiforgery = antiforgery.GetAndStoreTokens(context),
             });
         });

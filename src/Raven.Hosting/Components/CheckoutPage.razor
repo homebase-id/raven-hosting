@@ -7,7 +7,11 @@
         <PlanDetails Plan="Plan" ShowPrices="false" />
         <p class="price">@Price.Text</p>
         <p class="muted">For @Identity@(Plan.IsGroup ? $" and up to {Plan.Seats - 1} more" : "")</p>
-        <p class="muted">Renews every @BillingTerm.Name(Price.Months) until you turn it off.</p>
+        @if (Carried != null)
+        {
+            <p class="carried">Includes @Carried from your @CarriedFrom plan: what was left of it is not lost.</p>
+        }
+        <p class="muted">Runs until @DateTimeOffset.FromUnixTimeMilliseconds(Until).ToString("d MMMM yyyy"), then renews every @BillingTerm.Name(Price.Months) until you turn it off.</p>
     </div>
 
     <form method="post" action="@($"{UpgradePage.Root}/checkout")" class="card checkout">
@@ -31,5 +35,12 @@
     [Parameter] public Plan Plan { get; set; } = null!;
     [Parameter] public PlanPrice Price { get; set; } = null!;
     [Parameter] public string Identity { get; set; } = "";
+
+    /// <summary>The time carried over from the plan they pay for now ("about 3 months"); null when there is none</summary>
+    [Parameter] public string? Carried { get; set; }
+    [Parameter] public string? CarriedFrom { get; set; }
+
+    /// <summary>When the new term runs out, with any time carried over (unix ms)</summary>
+    [Parameter] public long Until { get; set; }
     [Parameter] public Microsoft.AspNetCore.Antiforgery.AntiforgeryTokenSet Antiforgery { get; set; } = null!;
 }
