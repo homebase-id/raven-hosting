@@ -1,10 +1,12 @@
 @* Who to sign in: their identity, then YouAuth on it (/upgrade?id=), back to the plan they chose, if they chose one *@
 <SitePage Title="Sign in" ShowSignIn="false">
     <form method="get" action="@UpgradePage.Root" class="card sign-in">
-        @if (ToAdmin)
+        @if (Next != null)
         {
-            <input type="hidden" name="next" value="@UpgradePage.NextAdmin">
-            <p>Sign in to the admin pages.</p>
+            <input type="hidden" name="next" value="@Next">
+            <p>@(Next == UpgradePage.NextAdmin ? "Sign in to the admin pages."
+                 : Next == UpgradePage.NextAccount ? "Sign in to manage your plan."
+                 : "Sign in as the identity you were invited as, to join the plan.")</p>
         }
         @if (Plan != null)
         {
@@ -35,6 +37,6 @@
     [Parameter] public string? Identity { get; set; }
     [Parameter] public string? Problem { get; set; }
 
-    /// <summary>Back to the admin pages after signing in</summary>
-    [Parameter] public bool ToAdmin { get; set; }
+    /// <summary>Where to go after signing in, as /sign-in?next= takes it: admin, account or join/&lt;token&gt;</summary>
+    [Parameter] public string? Next { get; set; }
 }

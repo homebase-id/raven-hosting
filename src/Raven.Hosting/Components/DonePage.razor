@@ -1,10 +1,14 @@
-@* Step 4: what happened to the purchase *@
-<SitePage Title="@(Purchase.Status == PlanGrantStatus.Applied ? "Done" : "Thank you")" Step="3">
+@* Step 4: what was bought, and whether the owner's host has it yet; on a group plan, on to naming its members *@
+<SitePage Title="@(Grant is null or { Status: PlanGrantStatus.Applied } ? "Done" : "Thank you")" Step="3">
     <div class="card">
-        @switch (Purchase.Status)
+        @switch (Grant?.Status)
         {
+            case null:
+                <h2>You pay for @View.PlanName</h2>
+                <p>It covers the people you name on it, up to @View.Subscription.Seats.</p>
+                break;
             case PlanGrantStatus.Applied:
-                <h2>You're on @PlanName</h2>
+                <h2>You're on @View.PlanName</h2>
                 @if (Plan != null)
                 {
                     <PlanDetails Plan="Plan" ShowPrices="false" />
@@ -12,27 +16,36 @@
                 break;
             case PlanGrantStatus.Pending:
                 <h2>Thank you</h2>
-                <p>Your purchase of @PlanName is recorded; your plan will change shortly.</p>
+                <p>Your purchase of @View.PlanName is recorded; your plan will change shortly.</p>
                 break;
             default:
                 <h2>Something went wrong</h2>
-                <p>We could not change @Identity to @PlanName. Please contact us with reference @Purchase.Reference.</p>
+                <p>We could not change @Identity to @View.PlanName. Please contact us with reference @Grant.Reference.</p>
                 break;
         }
-        @if (Purchase is { PriceMonths: { } months, PriceAmountCents: { } cents })
-        {
-            <p class="price">@(new PlanPrice(months, cents).Text)</p>
-            <p class="muted">This was a test checkout: nothing was charged.</p>
-        }
+        <p class="price">@View.Subscription.Price.Text</p>
+        <p class="muted">Until @Day(View.Subscription.PeriodEnd), then it renews. This was a test checkout: nothing was charged.</p>
     </div>
     <div class="actions">
-        <a class="button" href="@UpgradePage.ReturnUrl(Identity)">Back to your Homebase</a>
+        @if (View.Subscription.IsGroup)
+        {
+            <a class="button" href="@AccountPages.Root">Name the people on it</a>
+        }
+        else
+        {
+            <a class="button" href="@UpgradePage.ReturnUrl(Identity)">Back to your Homebase</a>
+            <a class="button secondary" href="@AccountPages.Root">Manage your plan</a>
+        }
     </div>
 </SitePage>
 
 @code {
-    [Parameter] public PlanGrant Purchase { get; set; } = null!;
+    [Parameter] public SubscriptionView View { get; set; } = null!;
     [Parameter] public Plan? Plan { get; set; }
-    [Parameter] public string PlanName { get; set; } = "";
+
+    /// <summary>The owner's own plan from it, as set on their host; null when they did not take a seat</summary>
+    [Parameter] public PlanGrant? Grant { get; set; }
     [Parameter] public string Identity { get; set; } = "";
+
+    private static string Day(long unixMs) => DateTimeOffset.FromUnixTimeMilliseconds(unixMs).ToString("d MMMM yyyy");
 }

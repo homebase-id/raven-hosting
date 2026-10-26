@@ -71,14 +71,14 @@ public class PlanService(
 
     /// <summary>
     /// Makes the grant (or finds the one with this reference) and tries to set it on its host straight away. The
-    /// grant records what the plan gives now, and for a purchase the term bought and its price now; a plan that does
-    /// not exist, or a term it has no price for, is refused.
+    /// grant records what the plan gives now; a plan that does not exist is refused.
     /// </summary>
-    /// <param name="months">The billing term bought, for a purchase; null for none</param>
     /// <param name="note">Why it was made, shown in the identity's history</param>
     /// <param name="madeBy">The admin who made it, on the admin pages</param>
+    /// <param name="quotaBytes">The quota to give, when not the plan's: a member's share of a group plan</param>
+    /// <param name="subscriptionId">The paid subscription it comes from (<see cref="SubscriptionService"/>)</param>
     public async Task<PlanGrant> GrantAsync(string? identity, string? planId, string? source, string? reference,
-        string? host, int? months = null, string? note = null, string? madeBy = null)
+        string? host, string? note = null, string? madeBy = null, long? quotaBytes = null, long? subscriptionId = null)
     {
         if (string.IsNullOrWhiteSpace(planId))
         {
@@ -87,12 +87,8 @@ public class PlanService(
         var plan = await planStore.GetAsync(planId) ??
                    throw new InvalidPlanGrantRequestException($"There is no plan '{planId.Trim()}'");
 
-        var price = months == null
-            ? null
-            : plan.PriceFor(months) ??
-              throw new InvalidPlanGrantRequestException($"Plan {plan.Id} has no price for {months} months");
-
-        var (grant, created) = await store.CreateAsync(identity, plan, price, source, reference, host, Now, note, madeBy);
+        var (grant, created) = await store.CreateAsync(identity, plan, source, reference, host, Now, note, madeBy,
+            quotaBytes, subscriptionId);
         return created || grant.Status == PlanGrantStatus.Pending ? await ApplyAsync(grant) : grant;
     }
 
@@ -149,10 +145,9 @@ public class PlanService(
     }
 
     /// <summary>
-    /// Moves every identity whose paid term ran out more than <see cref="Grace"/> ago back to the free plan, as an
-    /// expiry grant; and takes away add-ons whose end date passed. Returns the identities moved.
+    /// Takes away add-ons whose end date passed, and sets each identity's plan again without them
     /// </summary>
-    public async Task<List<string>> ExpireAsync()
+    public async Task ExpireAddOnsAsync()
     {
         foreach (var addOn in await addOns.EndedAsync(Now))
         {
@@ -163,30 +158,6 @@ public class PlanService(
                 await ReapplyAsync(addOn.Identity);
             }
         }
-
-        var moved = new List<string>();
-        var ended = await store.EndedAsync(Now - (long)Grace.TotalMilliseconds);
-        if (ended.Count == 0)
-        {
-            return moved;
-        }
-        var free = await planStore.GetAsync(SitePages.FreePlanId);
-        if (free == null)
-        {
-            logger.LogError("{count} paid subscription(s) ran out, but there is no '{free}' plan to move them to",
-                ended.Count, SitePages.FreePlanId);
-            return moved;
-        }
-        foreach (var grant in ended)
-        {
-            var when = DateTimeOffset.FromUnixTimeMilliseconds(grant.EndsAt!.Value).ToString("yyyy-MM-dd");
-            await GrantAsync(grant.Identity, free.Id, PlanGrantSource.Expiry, $"expiry-{grant.Id}", grant.Host,
-                note: $"{grant.PlanId} ran out on {when}; {Grace.Days} days' grace over");
-            moved.Add(grant.Identity);
-            logger.LogInformation("{identity}'s {planId} ran out on {when}: moved to {free}", grant.Identity,
-                grant.PlanId, when, free.Id);
-        }
-        return moved;
     }
 
     /// <summary>
@@ -464,10 +435,12 @@ public class PlanService(
 }
 
 /// <summary>
-/// Tries pending grants as they fall due, every hour moves paid subscriptions past their grace to the free plan and
-/// takes away add-ons that ran out, and once a day sets back any applied plan a host no longer has as granted
+/// Tries pending grants as they fall due; every hour bills subscriptions due to renew, moves members of subscriptions
+/// past their grace (and members whose own grace after leaving is over) to the free plan, and takes away add-ons that
+/// ran out; and once a day sets back any applied plan a host no longer has as granted
 /// </summary>
-public class PlanGrantWorker(PlanService plans, IConfiguration configuration, ILogger<PlanGrantWorker> logger)
+public class PlanGrantWorker(PlanService plans, SubscriptionService subscriptions, IConfiguration configuration,
+    ILogger<PlanGrantWorker> logger)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -488,10 +461,11 @@ public class PlanGrantWorker(PlanService plans, IConfiguration configuration, IL
                 if (DateTimeOffset.UtcNow >= nextExpiry)
                 {
                     nextExpiry = DateTimeOffset.UtcNow + expireEvery;
-                    var moved = await plans.ExpireAsync();
+                    await plans.ExpireAddOnsAsync();
+                    var moved = await subscriptions.RunAsync();
                     if (moved.Count > 0)
                     {
-                        logger.LogInformation("Moved {count} expired subscription(s) to the free plan", moved.Count);
+                        logger.LogInformation("Moved {count} identities to the free plan", moved.Count);
                     }
                 }
                 if (DateTimeOffset.UtcNow >= nextReconcile)

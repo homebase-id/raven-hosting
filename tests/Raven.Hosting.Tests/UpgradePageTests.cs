@@ -211,7 +211,7 @@ public class UpgradePageTests
         Assert.That(html, Does.Contain("Card number"));
         var form = Regex.Match(html, "<form method=\"post\" action=\"/upgrade/checkout\".*?</form>", RegexOptions.Singleline).Value;
         var names = Regex.Matches(form, "name=\"([^\"]+)\"").Select(m => m.Groups[1].Value);
-        Assert.That(names, Is.EquivalentTo(new[] { "__RequestVerificationToken", "planId", "months" }),
+        Assert.That(names, Is.EquivalentTo(new[] { "__RequestVerificationToken", "planId", "months", "seat" }),
             "the card fields have no names, so the browser never sends them");
     }
 
@@ -294,7 +294,7 @@ public class UpgradePageTests
             ("cardNumber", "4242424242424242"), ("cvc", "123"));
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Redirect));
-        Assert.That(response.Headers.Location!.ToString(), Does.StartWith("/upgrade/done?grant="));
+        Assert.That(response.Headers.Location!.ToString(), Does.StartWith("/upgrade/done?subscription="));
         Assert.That(_server.IdentityHosts.On(InvitationCodeServer.Hosts[0], Frodo),
             Is.EqualTo(new FakeIdentityHosts.Identity("veterans", 1099511627776, true)), "the plan and what it gives");
 
@@ -304,8 +304,7 @@ public class UpgradePageTests
             new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
         Assert.That(grants!.Single().Source, Is.EqualTo(PlanGrantSource.Purchase));
         Assert.That(grants!.Single().Status, Is.EqualTo(PlanGrantStatus.Applied));
-        Assert.That((grants!.Single().PriceMonths, grants!.Single().PriceAmountCents), Is.EqualTo((12, 5000L)),
-            "the term bought, at its price then");
+        Assert.That(grants!.Single().SubscriptionId, Is.Not.Null, "the subscription bought");
         Assert.That(grantsJson, Does.Not.Contain("4242424242424242"));
 
         var done = await _browser.GetAsync(response.Headers.Location!.ToString());

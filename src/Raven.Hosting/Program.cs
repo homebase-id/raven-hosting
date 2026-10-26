@@ -35,6 +35,7 @@ builder.Services.AddSingleton(purchaseAccess);
 var adminStore = new AdminStore(databasePath);
 builder.Services.AddSingleton(adminStore);
 builder.Services.AddSingleton(new AddOnStore(databasePath));
+builder.Services.AddSingleton(new SubscriptionStore(databasePath));
 builder.Services.AddSingleton(store);
 
 var planHosts = PlanHosts.FromConfiguration(builder.Configuration);
@@ -42,6 +43,7 @@ builder.Services.AddSingleton(planHosts);
 builder.Services.AddSingleton(grantStore);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<PlanService>();
+builder.Services.AddSingleton<SubscriptionService>();
 builder.Services.AddHostedService<PlanGrantWorker>();
 builder.Services.AddHttpClient(PlanService.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(15));
 
@@ -107,6 +109,7 @@ app.MapGet("/ping", () => "pong");
 
 UpgradePage.Map(app);
 SitePages.Map(app);
+AccountPages.Map(app);
 AdminPages.Map(app);
 
 // The reports filed on the site's report page, newest first
@@ -154,7 +157,7 @@ signup.MapPost("/use", async (CodeRequest request, ILogger<Program> logger, Time
         // Never in the way of the signup: the use is taken whatever happens here
         try
         {
-            await grantStore.CreateAsync(identity, plan, null, PlanGrantSource.Code, $"code:{code.Code}:{Guid.NewGuid():N}",
+            await grantStore.CreateAsync(identity, plan, PlanGrantSource.Code, $"code:{code.Code}:{Guid.NewGuid():N}",
                 null, time.GetUtcNow().ToUnixTimeMilliseconds(), note: $"Signed up with code {code.Code}");
         }
         catch (Exception e) when (e is InvalidInvitationCodeRequestException or Microsoft.Data.Sqlite.SqliteException)
@@ -261,7 +264,7 @@ plansApi.MapDelete("/{id}", async (string id) =>
     });
 
 //
-// Plan grants, create key: admins now, the payment flow later (as purchase grants)
+// Plan grants, create key: admins. Paid plans are subscriptions (SubscriptionService), bought on the upgrade page
 //
 
 //
@@ -310,7 +313,7 @@ grants.MapPost("/", async (GrantRequest request, PlanService plans) =>
     try
     {
         return Results.Ok(await plans.GrantAsync(request.Identity, request.PlanId, request.Source, request.Reference,
-            request.Host, request.Months));
+            request.Host));
     }
     catch (PlanGrantConflictException e)
     {
@@ -358,9 +361,7 @@ public record ValidateResponse(bool Valid);
 /// <param name="Source">code, purchase or admin; admin when left out</param>
 /// <param name="Reference">The caller's id for it, e.g. a payment id; made up when left out</param>
 /// <param name="Host">The provisioning domain of the host the identity is on, if known; a hint, tried first</param>
-/// <param name="Months">For a purchase, the billing term bought; the grant records the plan's price for it</param>
-public record GrantRequest(string? Identity, string? PlanId, string? Source, string? Reference, string? Host,
-    int? Months = null);
+public record GrantRequest(string? Identity, string? PlanId, string? Source, string? Reference, string? Host);
 /// <param name="AmountCents">What the term costs, in US cents; 0 is free</param>
 public record PriceRequest(long? AmountCents);
 public record UseResponse(bool Used, UsedInvitationCode? Code);

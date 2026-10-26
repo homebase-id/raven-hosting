@@ -104,6 +104,25 @@ public static class UpgradePage
     /// </summary>
     public const string NextAdmin = "admin";
 
+    /// <summary>The value of next that goes on to the owner's own page, /account</summary>
+    public const string NextAccount = "account";
+
+    /// <summary>The value of next that goes back to a join link: join/&lt;token&gt;</summary>
+    public static string NextJoin(string token) => $"join/{token}";
+
+    /// <summary>
+    /// Where a value of next goes after signing in: the admin pages, /account, or a join link; null for anything else
+    /// (a plan Id, which goes on to confirming it, or nothing)
+    /// </summary>
+    public static string? NextPath(string? next) => next switch
+    {
+        NextAdmin => AdminPages.Root,
+        NextAccount => AccountPages.Root,
+        _ when next != null && next.StartsWith("join/", StringComparison.Ordinal) &&
+               System.Text.RegularExpressions.Regex.IsMatch(next[5..], "^[A-Za-z0-9_-]{20,64}$") => "/" + next,
+        _ => null,
+    };
+
     /// <summary>
     /// Where "Back to your Homebase" goes once the plan is changed. The one place to change it.
     /// </summary>
@@ -155,13 +174,13 @@ public static class UpgradePage
                 hint = null;
             }
 
-            var toAdmin = next == NextAdmin;
+            var nextPath = NextPath(next);
             var signedIn = session.Read(context);
             if (signedIn != null && (requested == null || requested == signedIn.Identity))
             {
-                if (toAdmin)
+                if (nextPath != null)
                 {
-                    return Results.Redirect(AdminPages.Root);
+                    return Results.Redirect(nextPath);
                 }
                 if (chosen != null)
                 {
@@ -186,9 +205,9 @@ public static class UpgradePage
                 return Results.Redirect(chosen == null ? SitePages.SignIn : SitePages.SignInFor(chosen.Id));
             }
 
-            if (toAdmin)
+            if (nextPath != null)
             {
-                context.Response.Cookies.Append(NextPlanCookie, NextAdmin, NextPlanCookieOptions());
+                context.Response.Cookies.Append(NextPlanCookie, next!, NextPlanCookieOptions());
             }
             else if (chosen != null)
             {
@@ -221,12 +240,13 @@ public static class UpgradePage
                 await profiles.NameAsync(result.Identity)));
             var next = context.Request.Cookies[NextPlanCookie];
             context.Response.Cookies.Delete(NextPlanCookie, NextPlanCookieOptions());
-            return Results.Redirect(next == NextAdmin ? AdminPages.Root : PlanIds.IsValid(next) ? ConfirmUrl(next!) : Root);
+            return Results.Redirect(NextPath(next) ?? (PlanIds.IsValid(next) ? ConfirmUrl(next!) : Root));
         });
 
         // Step 2, confirm
         page.MapGet("/confirm", async (HttpContext context, string? plan, UpgradeOptions options,
-            UpgradeSession session, PlanService plans, PlanStore planStore, PurchaseAccessStore purchaseAccess) =>
+            UpgradeSession session, PlanService plans, PlanStore planStore, PurchaseAccessStore purchaseAccess,
+            SubscriptionService subscriptions) =>
         {
             if (!options.Enabled)
             {
@@ -265,12 +285,14 @@ public static class UpgradePage
                 Now = located.Now,
                 CurrentPlanName = await PlanNameAsync(planStore, located.PlanId),
                 CanBuy = await purchaseAccess.CanBuyAsync(signedIn.Identity),
+                Owned = await subscriptions.OwnedByAsync(signedIn.Identity),
             });
         });
 
         // Step 3, a test checkout of the term chosen
-        page.MapGet("/checkout", async (HttpContext context, string? plan, int? months, UpgradeOptions options,
-            UpgradeSession session, PlanStore planStore, IAntiforgery antiforgery, PurchaseAccessStore purchaseAccess) =>
+        page.MapGet("/checkout", async (HttpContext context, string? plan, int? months, string? seat,
+            UpgradeOptions options, UpgradeSession session, PlanStore planStore, IAntiforgery antiforgery,
+            PurchaseAccessStore purchaseAccess) =>
         {
             if (!options.Enabled)
             {
@@ -303,15 +325,17 @@ public static class UpgradePage
                 Plan = chosen,
                 Price = price,
                 Identity = signedIn.Identity,
+                TakesSeat = !chosen.IsGroup || seat != "no",
                 Antiforgery = antiforgery.GetAndStoreTokens(context),
             });
         });
 
-        // Completing the test checkout makes a purchase grant of the plan and term, which sets the plan on the
-        // identity's host. Only planId and months are read; anything else in the form is ignored
+        // Completing the test checkout buys the plan for the term: a subscription the owner pays for, its first invoice
+        // paid, which sets the plan on their host if they take a seat. Only planId, months and seat are read; anything
+        // else in the form is ignored
         page.MapPost("/checkout", async (HttpContext context, [FromForm] string? planId, [FromForm] int? months,
-            UpgradeOptions options, UpgradeSession session, PlanService plans, PlanStore planStore,
-            PurchaseAccessStore purchaseAccess) =>
+            [FromForm] string? seat, UpgradeOptions options, UpgradeSession session, PlanService plans,
+            PlanStore planStore, PurchaseAccessStore purchaseAccess, SubscriptionService subscriptions) =>
         {
             if (!options.Enabled)
             {
@@ -341,28 +365,32 @@ public static class UpgradePage
                 return ChooseATerm(plan);
             }
 
-            // Not onto a plan smaller than what they store. A host that cannot say just now does not stop a purchase:
-            // the grant waits for it
+            // Not onto a plan smaller than what they store, when they take a seat. A host that cannot say just now does
+            // not stop a purchase: the grant waits for it
+            var takesSeat = !plan.IsGroup || seat != "no";
             var located = await LocateAsync(context, signedIn, session, plans);
-            if (located.Error == null && PlanFit.Of(plan, located.Now) is { CanChoose: false } fit)
+            if (takesSeat && !plan.IsGroup && located.Error == null && PlanFit.Of(plan, located.Now) is { CanChoose: false } fit)
             {
                 return TooSmall(plan, fit);
             }
             signedIn = located.SignedIn ?? signedIn;
 
-            var grant = await plans.GrantAsync(signedIn.Identity, plan.Id, PlanGrantSource.Purchase,
-                $"purchase-{Guid.NewGuid():N}", signedIn.Host, price.Months);
-            if (grant.Host != null && grant.Host != signedIn.Host)
+            try
             {
-                session.Write(context, signedIn with { Host = grant.Host });
+                var bought = await subscriptions.BuyAsync(signedIn.Identity, plan, price, takesSeat, signedIn.Host,
+                    "test-checkout", $"test-{Guid.NewGuid():N}");
+                return Results.Redirect($"{Root}/done?subscription={bought.Id}");
             }
-
-            return Results.Redirect($"{Root}/done?grant={grant.Id}");
+            catch (SubscriptionRefusedException e)
+            {
+                return Message(StatusCodes.Status400BadRequest, "Not changed", e.Message, "Manage your plan",
+                    AccountPages.Root);
+            }
         });
 
-        // Step 4, done: only the signed-in identity's own purchases. The plan is named even if it is no longer for sale
-        page.MapGet("/done", async (HttpContext context, long? grant, UpgradeOptions options, UpgradeSession session,
-            PlanGrantStore grants, PlanStore planStore) =>
+        // Step 4, done: only the signed-in identity's own subscription. The plan is named even if it is no longer for sale
+        page.MapGet("/done", async (HttpContext context, long? subscription, UpgradeOptions options,
+            UpgradeSession session, PlanGrantStore grants, PlanStore planStore, SubscriptionService subscriptions) =>
         {
             if (!options.Enabled)
             {
@@ -375,18 +403,19 @@ public static class UpgradePage
                 return SessionEnded();
             }
 
-            var purchase = grant == null ? null : await grants.GetAsync(grant.Value);
-            if (purchase == null || purchase.Identity != signedIn.Identity)
+            var view = subscription == null ? null : await subscriptions.ViewAsync(subscription.Value);
+            if (view == null || view.Subscription.Owner != signedIn.Identity)
             {
                 return Message(StatusCodes.Status404NotFound, "Not found", "We could not find that purchase.");
             }
 
-            var plan = await planStore.GetAsync(purchase.PlanId);
+            // Their own plan as set on their host, if they took a seat
+            var current = await grants.CurrentForAsync(signedIn.Identity);
             return Show<DonePage>(new
             {
-                Purchase = purchase,
-                Plan = plan,
-                PlanName = plan?.Name ?? purchase.PlanId,
+                View = view,
+                Plan = await planStore.GetAsync(view.Subscription.PlanId),
+                Grant = current?.SubscriptionId == view.Subscription.Id ? current : null,
                 Identity = signedIn.Identity,
             });
         });
@@ -464,7 +493,7 @@ public static class UpgradePage
         MaxAge = YouAuthLogin.StateLifetime,
     };
 
-    private static RazorComponentResult Message(int status, string title, string message, string? linkText = null,
+    internal static RazorComponentResult Message(int status, string title, string message, string? linkText = null,
         string? linkHref = null) =>
         Show<MessagePage>(new { Title = title, Message = message, LinkText = linkText, LinkHref = linkHref }, status);
 

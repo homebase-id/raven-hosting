@@ -17,13 +17,16 @@ public record AdminContext(string Identity, string? Name, AntiforgeryTokenSet An
     PurchaseAccess Checkout);
 
 /// <summary>
-/// One identity's subscription as the admin pages show it: its latest grant, what it gives with its add-ons, and
-/// whether it is running out
+/// One identity's subscription as the admin pages show it: its latest grant, what it gives with its add-ons, the paid
+/// subscription that covers it if any, and whether it is running out
 /// </summary>
 /// <param name="PlanName">The plan's name; its Id when it is no longer a plan</param>
 /// <param name="AddOns">Its active add-ons</param>
 /// <param name="Now">When it was looked at (unix ms)</param>
-public record SubscriptionRow(PlanGrant Grant, string PlanName, Entitlement Entitlement, List<AddOn> AddOns, long Now)
+/// <param name="Paid">The paid subscription its plan is from; null for a plan with no end</param>
+/// <param name="Member">Its place on that subscription</param>
+public record SubscriptionRow(PlanGrant Grant, string PlanName, Entitlement Entitlement, List<AddOn> AddOns, long Now,
+    Subscription? Paid = null, SubscriptionMember? Member = null)
 {
     /// <summary>What the list filters by</summary>
     public static readonly string[] States = ["active", "expiring", "grace", "paid", "free", "out-of-sync", "add-ons"];
@@ -31,23 +34,28 @@ public record SubscriptionRow(PlanGrant Grant, string PlanName, Entitlement Enti
     /// <summary>A paid subscription runs out this many days before it shows as expiring</summary>
     public const int ExpiringDays = 30;
 
-    public bool IsPaid => Grant.EndsAt != null;
+    public bool IsPaid => Paid != null;
+
+    /// <summary>When it runs out: when the member's place on a plan it left does, or else the paid term; null when it
+    /// does not</summary>
+    public long? EndsAt => Member?.IsLeaving == true ? Member.EndedAt : Paid?.PeriodEnd;
 
     /// <summary>Whole days until it runs out (0 on the day, less once it has); null when it does not</summary>
-    public int? DaysLeft => Grant.EndsAt is { } ends ? (int)Math.Ceiling((ends - Now) / 86_400_000d) : null;
+    public int? DaysLeft => EndsAt is { } ends ? (int)Math.Ceiling((ends - Now) / 86_400_000d) : null;
 
     /// <summary>active, expiring (within <see cref="ExpiringDays"/>) or grace (ran out, not yet moved to free)</summary>
-    public string State => Grant.EndsAt is { } ends && ends < Now ? "grace" : DaysLeft <= ExpiringDays ? "expiring" : "active";
+    public string State => EndsAt is { } ends && ends < Now ? "grace" : DaysLeft <= ExpiringDays ? "expiring" : "active";
 
     /// <summary>When the grace ends and it goes back to the free plan; null when it is not in its grace</summary>
-    public long? GraceEndsAt => State == "grace" ? Grant.EndsAt + (long)PlanService.Grace.TotalMilliseconds : null;
+    public long? GraceEndsAt => State == "grace" ? EndsAt + (long)PlanService.Grace.TotalMilliseconds : null;
 
     /// <summary>How it came about, as people read it</summary>
-    public string How => Grant.Source switch
+    public string How => Paid != null && Member?.IsLeaving == true
+        ? $"Leaving {(Paid.Owner == Grant.Identity ? "its own" : $"{Paid.Owner}'s")} plan"
+        : Grant.Source switch
     {
-        PlanGrantSource.Purchase => Grant.PriceAmountCents is { } cents && Grant.PriceMonths is { } months
-            ? $"Paid {new PlanPrice(months, cents).Text}"
-            : "Paid",
+        PlanGrantSource.Purchase => Paid != null ? $"Paid {Paid.Price.Text}" : "Paid",
+        PlanGrantSource.Group => Paid != null ? $"On {Paid.Owner}'s plan" : "On a group plan",
         PlanGrantSource.Code => "Free, from a code",
         PlanGrantSource.Expiry => "Free, after a paid plan ran out",
         _ => "Free, from an admin",
@@ -64,6 +72,19 @@ public record SubscriptionRow(PlanGrant Grant, string PlanName, Entitlement Enti
         "add-ons" => AddOns.Count > 0,
         _ => true,
     };
+}
+
+/// <summary>
+/// One paid subscription on the renewals list: when it runs out, and whether it is in its grace
+/// </summary>
+public record RenewalRow(SubscriptionView View, long Now)
+{
+    /// <summary>Whole days until it runs out (0 on the day, less once it has)</summary>
+    public int DaysLeft => (int)Math.Ceiling((View.Subscription.PeriodEnd - Now) / 86_400_000d);
+
+    /// <summary>active, expiring (within <see cref="SubscriptionRow.ExpiringDays"/>) or grace</summary>
+    public string State => View.Subscription.State(Now) == "grace" ? "grace"
+        : DaysLeft <= SubscriptionRow.ExpiringDays ? "expiring" : "active";
 }
 
 /// <summary>
@@ -88,9 +109,10 @@ public static class AdminPages
         //
 
         admin.MapGet("", async (HttpContext context, PlanStore plans, PlanGrantStore grants, AddOnStore addOns,
-            InvitationCodeStore codes, ReportStore reports, AdminStore admins, TimeProvider time) =>
+            SubscriptionService subscriptions, InvitationCodeStore codes, ReportStore reports, AdminStore admins,
+            TimeProvider time) =>
         {
-            var rows = await SubscriptionRowsAsync(grants, addOns, plans, time);
+            var rows = await SubscriptionRowsAsync(grants, addOns, plans, subscriptions, time);
             return await Show<AdminHome>(context, new
             {
                 Plans = await plans.ListAsync(),
@@ -110,7 +132,9 @@ public static class AdminPages
         admin.MapGet("/plans", async (HttpContext context, PlanStore plans) =>
             await Show<AdminPlans>(context, new { Plans = await plans.ListAsync() }));
 
-        admin.MapGet("/plans/new", async (HttpContext context) => await Show<AdminPlanForm>(context, new { }));
+        // Typed Task<IResult>: a lambda taking only HttpContext would otherwise bind as a RequestDelegate, whose result
+        // is thrown away, and answer an empty 200
+        admin.MapGet("/plans/new", Task<IResult> (HttpContext context) => Show<AdminPlanForm>(context, new { }));
 
         admin.MapPost("/plans/new", async (HttpContext context, IFormCollection form, PlanStore plans) =>
         {
@@ -128,7 +152,7 @@ public static class AdminPages
                     Text(form["id"]), Text(form["name"]), Bytes(form["quota"], form["unit"]), Checked(form, "publicWebPresence"),
                     Checked(form, "forSale"), Text(form["description"]) ?? "", prices, Number(form["sortOrder"], "Sort order") ?? 0,
                     Checked(form, "publicEmail"), Number(form["emailAliases"], "Email aliases") ?? 0,
-                    Checked(form, "recommended")));
+                    Checked(form, "recommended"), Number(form["seats"], "Seats") ?? 1));
                 Log(context, "created plan {PlanId}", plan.Id);
                 return Back(PlanUrl(plan.Id), done: $"Plan {plan.Name} created.");
             }
@@ -158,7 +182,8 @@ public static class AdminPages
                     Text(form["name"]) ?? "", Text(form["description"]) ?? "", Bytes(form["quota"], form["unit"]),
                     Checked(form, "publicWebPresence"), Checked(form, "forSale"),
                     Number(form["sortOrder"], "Sort order") ?? 0, Checked(form, "publicEmail"),
-                    Number(form["emailAliases"], "Email aliases") ?? 0, Checked(form, "recommended")));
+                    Number(form["emailAliases"], "Email aliases") ?? 0, Checked(form, "recommended"),
+                    Number(form["seats"], "Seats") ?? 1));
                 if (plan == null)
                 {
                     return await NotFound(context, "There is no such plan.");
@@ -246,11 +271,11 @@ public static class AdminPages
             Results.Redirect(DomainNames.Normalize(identity) is { } found ? SubscriptionUrl(found) : $"{Root}/subscriptions"));
 
         admin.MapGet("/subscriptions", async (HttpContext context, string? q, string? state, PlanGrantStore grants,
-            AddOnStore addOns, PlanStore plans, PlanHosts hosts, TimeProvider time) =>
+            AddOnStore addOns, PlanStore plans, SubscriptionService subscriptions, PlanHosts hosts, TimeProvider time) =>
         {
             q = string.IsNullOrWhiteSpace(q) ? null : q.Trim().ToLowerInvariant();
             state = SubscriptionRow.States.Contains(state) ? state : null;
-            var rows = await SubscriptionRowsAsync(grants, addOns, plans, time);
+            var rows = await SubscriptionRowsAsync(grants, addOns, plans, subscriptions, time);
             return await Show<AdminSubscriptions>(context, new
             {
                 Rows = rows.Where(r => (q == null || r.Grant.Identity.Contains(q)) && (state == null || r.Is(state))).ToList(),
@@ -264,13 +289,15 @@ public static class AdminPages
 
         // Change an identity's plan: a new subscription, with the one it had going to its history
         admin.MapPost("/subscriptions", async (HttpContext context, IFormCollection form, PlanService service,
-            PlanGrantStore grants, AddOnStore addOns, PlanStore plans, PlanHosts hosts, TimeProvider time) =>
+            PlanGrantStore grants, AddOnStore addOns, PlanStore plans, SubscriptionService subscriptions, PlanHosts hosts,
+            TimeProvider time) =>
         {
             var admin = Who(context);
             try
             {
                 var grant = await service.GrantAsync(Text(form["identity"]), Text(form["planId"]), PlanGrantSource.Admin,
                     Text(form["reference"]), Text(form["host"]), note: Text(form["note"]), madeBy: admin);
+                await subscriptions.DetachAsync(grant.Identity, $"admin:{admin}");
                 Log(context, "put {Identity} on plan {PlanId} (grant {GrantId})", grant.Identity, grant.PlanId, grant.Id);
                 return Back(SubscriptionUrl(grant.Identity),
                     done: grant.Status == PlanGrantStatus.Applied
@@ -279,7 +306,7 @@ public static class AdminPages
             }
             catch (Exception e) when (IsRefusal(e) || e is PlanGrantConflictException)
             {
-                var rows = await SubscriptionRowsAsync(grants, addOns, plans, time);
+                var rows = await SubscriptionRowsAsync(grants, addOns, plans, subscriptions, time);
                 return await Show<AdminSubscriptions>(context, new
                 {
                     Rows = rows,
@@ -292,32 +319,67 @@ public static class AdminPages
         });
 
         admin.MapGet("/subscriptions/{identity}", async (HttpContext context, string identity, PlanGrantStore grants,
-            AddOnStore addOns, PlanStore plans, PlanHosts hosts, TimeProvider time) =>
+            AddOnStore addOns, PlanStore plans, SubscriptionService subscriptions, PlanHosts hosts, TimeProvider time) =>
         {
             if (DomainNames.Normalize(identity) is not { } found)
             {
                 return await NotFound(context, "That is not an identity.");
             }
-            return await Show<AdminSubscription>(context, await SubscriptionPageAsync(found, grants, addOns, plans, hosts, time));
+            return await Show<AdminSubscription>(context,
+                await SubscriptionPageAsync(found, grants, addOns, plans, subscriptions, hosts, time));
         });
 
+        // Add months to the paid subscription the identity owns, free of charge
         admin.MapPost("/subscriptions/{identity}/extend", async (HttpContext context, string identity,
-            IFormCollection form, PlanGrantStore grants, TimeProvider time) =>
+            IFormCollection form, SubscriptionService subscriptions) =>
         {
             var found = DomainNames.Normalize(identity) ?? "";
             try
             {
-                var current = await grants.CurrentForAsync(found);
-                var months = Number(form["months"], "Months") ?? throw new InvalidPlanGrantRequestException("Give the months");
-                var extended = current == null ? null
-                    : await grants.ExtendAsync(current.Id, months, time.GetUtcNow().ToUnixTimeMilliseconds());
-                if (extended == null)
-                {
-                    return Back(SubscriptionUrl(found), error: "Only a paid subscription, which runs out, can be extended.");
-                }
-                Log(context, "extended {Identity}'s {PlanId} by {Months} months", found, extended.PlanId, months);
+                var owned = await subscriptions.OwnedByAsync(found) ??
+                            throw new SubscriptionRefusedException($"{found} pays for no subscription.");
+                var months = Number(form["months"], "Months") ?? throw new SubscriptionRefusedException("Give the months");
+                var extended = await subscriptions.ExtendAsync(owned.Subscription.Id, months);
+                Log(context, "extended {Identity}'s subscription {SubscriptionId} by {Months} months", found, extended.Id, months);
                 return Back(SubscriptionUrl(found),
-                    done: $"Extended by {BillingTerm.Name(months)}: now until {AdminForm.Day(extended.EndsAt)}.");
+                    done: $"Extended by {BillingTerm.Name(months)}: now until {AdminForm.Day(extended.PeriodEnd)}.");
+            }
+            catch (InvalidInvitationCodeRequestException e)
+            {
+                return Back(SubscriptionUrl(found), error: e.Message);
+            }
+        });
+
+        // An invoice paid outside the site: a bank transfer, cash, a payment taken by hand
+        admin.MapPost("/subscriptions/{identity}/invoices/{id:long}/paid", async (HttpContext context, string identity,
+            long id, IFormCollection form, SubscriptionService subscriptions) =>
+        {
+            var found = DomainNames.Normalize(identity) ?? "";
+            try
+            {
+                var (invoice, renewed) = await subscriptions.PayAsync(id, $"admin:{Who(context)}", Text(form["reference"]));
+                Log(context, "marked invoice {InvoiceId} ({Amount}) paid for subscription {SubscriptionId}", invoice.Id,
+                    invoice.Price.Text, renewed.Id);
+                return Back(SubscriptionUrl(found), done: $"Paid: now until {AdminForm.Day(renewed.PeriodEnd)}.");
+            }
+            catch (InvalidInvitationCodeRequestException e)
+            {
+                return Back(SubscriptionUrl(found), error: e.Message);
+            }
+        });
+
+        admin.MapPost("/subscriptions/{identity}/auto-renew", async (HttpContext context, string identity,
+            IFormCollection form, SubscriptionService subscriptions) =>
+        {
+            var found = DomainNames.Normalize(identity) ?? "";
+            try
+            {
+                var owned = await subscriptions.OwnedByAsync(found) ??
+                            throw new SubscriptionRefusedException($"{found} pays for no subscription.");
+                var on = form["on"] == "true";
+                await subscriptions.SetAutoRenewAsync(owned.Subscription.Id, found, on);
+                Log(context, "turned auto-renew {OnOff} for {Identity}'s subscription", on ? "on" : "off", found);
+                return Back(SubscriptionUrl(found), done: on ? "Auto-renew is on." : "Auto-renew is off: it runs out at the end of its term.");
             }
             catch (InvalidInvitationCodeRequestException e)
             {
@@ -394,30 +456,33 @@ public static class AdminPages
         // Renewals: paid subscriptions running out, in their grace, or moved back to free
         //
 
-        admin.MapGet("/renewals", async (HttpContext context, string? within, PlanGrantStore grants, AddOnStore addOns,
-            PlanStore plans, TimeProvider time) =>
+        admin.MapGet("/renewals", async (HttpContext context, string? within, PlanGrantStore grants,
+            SubscriptionService subscriptions, SubscriptionStore subscriptionStore, TimeProvider time) =>
         {
             within = within is { } chosen && RenewalsWithin.Contains(chosen) ? chosen : "30";
             return await Show<AdminRenewals>(context, new
             {
-                Rows = await RenewalsAsync(within, grants, addOns, plans, time),
+                Rows = await RenewalsAsync(within, subscriptions, subscriptionStore, time),
                 Dropped = await DroppedAsync(grants, time),
                 Within = within,
             });
         });
 
-        admin.MapGet("/renewals.csv", async (HttpContext context, string? within, PlanGrantStore grants,
-            AddOnStore addOns, PlanStore plans, TimeProvider time) =>
+        admin.MapGet("/renewals.csv", async (HttpContext context, string? within, SubscriptionService subscriptions,
+            SubscriptionStore subscriptionStore, TimeProvider time) =>
         {
             within = within is { } chosen && RenewalsWithin.Contains(chosen) ? chosen : "30";
-            var csv = new System.Text.StringBuilder("identity,plan,paid,term_months,bought,until,days_left,state\n");
-            foreach (var row in await RenewalsAsync(within, grants, addOns, plans, time))
+            var csv = new System.Text.StringBuilder(
+                "owner,plan,members,price,term_months,auto_renew,since,until,days_left,state,open_invoice\n");
+            foreach (var row in await RenewalsAsync(within, subscriptions, subscriptionStore, time))
             {
-                var g = row.Grant;
-                csv.AppendLine(string.Join(",", Csv(g.Identity), Csv(g.PlanId),
-                    g.PriceAmountCents is { } cents ? AdminForm.Dollars(cents) : "",
-                    g.PriceMonths?.ToString(CultureInfo.InvariantCulture) ?? "", AdminForm.Day(g.CreatedAt),
-                    AdminForm.Day(g.EndsAt), row.DaysLeft?.ToString(CultureInfo.InvariantCulture) ?? "", row.State));
+                var s = row.View.Subscription;
+                csv.AppendLine(string.Join(",", Csv(s.Owner), Csv(s.PlanId),
+                    row.View.Holding.Count.ToString(CultureInfo.InvariantCulture), AdminForm.Dollars(s.PriceCents),
+                    s.TermMonths.ToString(CultureInfo.InvariantCulture), s.AutoRenew ? "yes" : "no",
+                    AdminForm.Day(s.CreatedAt), AdminForm.Day(s.PeriodEnd),
+                    row.DaysLeft.ToString(CultureInfo.InvariantCulture), row.State,
+                    row.View.OpenInvoice is { } open ? AdminForm.Dollars(open.AmountCents) : ""));
             }
             return Results.File(System.Text.Encoding.UTF8.GetBytes(csv.ToString()), "text/csv",
                 $"renewals-{within}-{time.GetUtcNow():yyyy-MM-dd}.csv");
@@ -674,26 +739,33 @@ public static class AdminPages
     public static readonly string[] RenewalsWithin = ["7", "30", "90", "grace"];
 
     private static async Task<List<SubscriptionRow>> SubscriptionRowsAsync(PlanGrantStore grants, AddOnStore addOns,
-        PlanStore plans, TimeProvider time)
+        PlanStore plans, SubscriptionService subscriptions, TimeProvider time)
     {
         var names = (await plans.ListAsync()).ToDictionary(p => p.Id, p => p.Name, StringComparer.OrdinalIgnoreCase);
         var active = await addOns.ActiveByIdentityAsync();
+        var coverage = await subscriptions.CoverageAsync();
         var now = time.GetUtcNow().ToUnixTimeMilliseconds();
         return (await grants.CurrentAsync()).Select(g =>
         {
             var own = active.GetValueOrDefault(g.Identity) ?? [];
-            return new SubscriptionRow(g, names.GetValueOrDefault(g.PlanId) ?? g.PlanId, Entitlement.Of(g, own), own, now);
+            // Only while its plan is still the subscription's: an admin may have changed it since
+            var paid = g.SubscriptionId != null && coverage.TryGetValue(g.Identity, out var c) &&
+                       c.Subscription.Id == g.SubscriptionId ? c : default;
+            return new SubscriptionRow(g, names.GetValueOrDefault(g.PlanId) ?? g.PlanId, Entitlement.Of(g, own), own, now,
+                paid.Subscription, paid.Member);
         }).ToList();
     }
 
     private static async Task<object> SubscriptionPageAsync(string identity, PlanGrantStore grants, AddOnStore addOns,
-        PlanStore plans, PlanHosts hosts, TimeProvider time)
+        PlanStore plans, SubscriptionService subscriptions, PlanHosts hosts, TimeProvider time)
     {
         var history = await grants.ListAsync(identity, null);
         var all = await addOns.ListAsync(identity);
         var active = all.Where(a => a.IsActive).ToList();
         var planList = await plans.ListAsync();
         var current = history.FirstOrDefault();
+        var covering = await subscriptions.CoveringAsync(identity);
+        var paid = current?.SubscriptionId != null && covering?.View.Subscription.Id == current.SubscriptionId ? covering : null;
         return new
         {
             Identity = identity,
@@ -701,7 +773,8 @@ public static class AdminPages
                 ? null
                 : new SubscriptionRow(current, planList.FirstOrDefault(p => UpgradePage.SamePlan(p.Id, current.PlanId))?.Name
                                                ?? current.PlanId, Entitlement.Of(current, active), active,
-                    time.GetUtcNow().ToUnixTimeMilliseconds()),
+                    time.GetUtcNow().ToUnixTimeMilliseconds(), paid?.View.Subscription, paid?.Member),
+            Owned = await subscriptions.OwnedByAsync(identity),
             History = history,
             AddOns = all,
             Plans = planList,
@@ -709,12 +782,22 @@ public static class AdminPages
         };
     }
 
-    private static async Task<List<SubscriptionRow>> RenewalsAsync(string within, PlanGrantStore grants,
-        AddOnStore addOns, PlanStore plans, TimeProvider time) =>
-        (await SubscriptionRowsAsync(grants, addOns, plans, time))
-        .Where(r => r.IsPaid && (within == "grace" ? r.State == "grace" : r.State != "grace" && r.DaysLeft <= int.Parse(within)))
-        .OrderBy(r => r.Grant.EndsAt)
-        .ToList();
+    // Running subscriptions whose term runs out within the window, or in their grace, soonest first
+    private static async Task<List<RenewalRow>> RenewalsAsync(string within, SubscriptionService subscriptions,
+        SubscriptionStore store, TimeProvider time)
+    {
+        var now = time.GetUtcNow().ToUnixTimeMilliseconds();
+        var rows = new List<RenewalRow>();
+        foreach (var subscription in await store.ListAsync(activeOnly: true))
+        {
+            var row = new RenewalRow(await subscriptions.ViewOfAsync(subscription), now);
+            if (within == "grace" ? row.State == "grace" : row.State != "grace" && row.DaysLeft <= int.Parse(within))
+            {
+                rows.Add(row);
+            }
+        }
+        return rows.OrderBy(r => r.View.Subscription.PeriodEnd).ToList();
+    }
 
     // Identities moved back to the free plan in the last 90 days, newest first
     private static async Task<List<PlanGrant>> DroppedAsync(PlanGrantStore grants, TimeProvider time)

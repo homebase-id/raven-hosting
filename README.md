@@ -83,12 +83,13 @@ grant.
 
 | Field | |
 |---|---|
-| `id` | letters, digits, `.`, `_` and `-`, up to 64; unique whatever its case, and found in any case. Cannot be changed. `grants` is reserved |
+| `id` | letters, digits, `.`, `_` and `-`, up to 64; unique whatever its case, and found in any case. Cannot be changed. `grants`, `admin` and `account` are reserved |
 | `name`, `description` | what owners see; the name is required |
 | `quotaBytes` | bytes an identity on it may store; more than 0, there is no unlimited. `storage` in answers is the same, as people read it (`1 TB`) |
 | `publicWebPresence` | whether an identity on it has a public home page |
 | `publicEmail` | whether it offers a public email address; `false` by default. Advertised only: shown on its card, not sent to the hosts or enforced |
 | `emailAliases` | how many email aliases it offers, 0 or more; `0` by default. Advertised only, like `publicEmail` |
+| `seats` | how many identities it covers, 1 to 50; `1` by default. More than 1 makes it a **group plan**: its `quotaBytes` is a pool the one who pays shares out between the people on it, at least 1 GB each, so it must be at least 1 GB per seat ([Subscriptions](#subscriptions)) |
 | `forSale` | whether owners can buy it on the upgrade page; `false` by default. A plan for sale has at least one price |
 | `prices` | what it costs, one price per billing term, shortest first: `{months, amountCents}` in US cents, `months` from 1 to 120 (1 monthly, 12 yearly, 24 two-yearly...), `amountCents` 0 or more (0 is free). Answers add `amount` (`$50`), `per` (`year`) and `text` (`$50 / year`). Nothing charges them yet: the upgrade page's checkout is a test |
 | `recommended` | whether its card is marked "Recommended" for visitors; `false` by default. When more than one is, the first listed is. Someone signed in whose host says their quota is recommended the next size up instead: the smallest plan for sale with more room than they have, or none when no plan has more |
@@ -107,19 +108,20 @@ purchase. A plan cannot be deleted while a code or a grant uses it; to retire on
 
 | Call | Answer |
 |---|---|
-| `POST / {id, name, quotaBytes, publicWebPresence, publicEmail?, emailAliases?, forSale?, description?, prices?: [{months, amountCents}], sortOrder?, recommended?}` | the new plan; 409 if the Id is taken |
+| `POST / {id, name, quotaBytes, publicWebPresence, publicEmail?, emailAliases?, seats?, forSale?, description?, prices?: [{months, amountCents}], sortOrder?, recommended?}` | the new plan; 409 if the Id is taken |
 | `GET /` | every plan, by `sortOrder`, then `id` |
 | `GET /<id>` | the plan; 404 if there is none |
-| `PATCH /<id> {name?, description?, quotaBytes?, publicWebPresence?, publicEmail?, emailAliases?, forSale?, sortOrder?, recommended?}` | the plan as it is now; 404 if there is none. Fields left out stay as they are. `forSale: true` on a plan with no price is a 400 |
+| `PATCH /<id> {name?, description?, quotaBytes?, publicWebPresence?, publicEmail?, emailAliases?, seats?, forSale?, sortOrder?, recommended?}` | the plan as it is now; 404 if there is none. Fields left out stay as they are. `forSale: true` on a plan with no price is a 400 |
 | `PUT /<id>/prices/<months> {amountCents}` | the plan, with that term added or its price changed; 404 if there is no such plan |
 | `DELETE /<id>/prices/<months>` | the plan, without that term; 404 if it has none; 409 for the last price of a plan for sale |
 | `DELETE /<id>` | 204; 404 if there is none; 409 while a code or grant uses it |
 
 Bad input (a bad or reserved Id, no name, a quota of 0 or less, a missing `quotaBytes` or `publicWebPresence`,
-`emailAliases` below 0, a price for 0 or more than 120 months or below 0, two prices for one term, a plan for sale with no price) is a 400.
+`emailAliases` below 0, `seats` outside 1..50 or with less than 1 GB each, a price for 0 or more than 120 months or
+below 0, two prices for one term, a plan for sale with no price) is a 400.
 
-Changing a price changes nothing for purchases already made: a purchase grant keeps the term and price it was
-bought at.
+Changing a plan or a price changes nothing for subscriptions already bought: each keeps the seats, storage, term and
+price it was bought at, and renews at that price.
 
 ### Who may buy (`/api/v1/purchases`, create key)
 
@@ -170,36 +172,71 @@ A code whose plan is not one of the plans still works, with the host's defaults;
 
 ## Subscriptions
 
-Each identity's **subscription** is its latest [grant](#plan-grants); the grants before it are its history. One per
-identity: a new grant (a code signup, a purchase, an admin changing its plan, or an expiry) replaces it.
+Each identity's plan is its latest [grant](#plan-grants); the grants before it are its history. A plan someone pays
+for is a **subscription**, tracked here rather than by a payment provider (`SubscriptionStore`, `SubscriptionService`):
 
-| How | Paid | Until |
+| Table | One row per | |
 |---|---|---|
-| `code`: signed up with an invitation code (when the host says who, on `/use`) | free | no end |
-| `admin`: an admin changed its plan | free | no end |
-| `purchase`: bought on the upgrade page | the term's price | bought + the term's months (`endsAt`) |
-| `expiry`: the service, moving a paid one whose term and grace ran out back to the free plan | free | no end |
+| `subscriptions` | plan someone pays for | the **owner** (who pays and manages it), the plan with its `seats` and storage (`pool_bytes`) and the term and price as bought, `auto_renew`, the term paid for now (`period_start`, `period_end`), `status` (`active`, then `ended`) |
+| `subscription_members` | identity it names | `invited`, `active`, `declined`, `removed`, `left` or `ended`; its share of the pool (`quota_bytes`); its join link's token while invited; when it left, and when it stopped holding a seat (`dropped_at`) |
+| `invoices` | term | the term and amount, `open`, `paid` (when, how: `test-checkout`, `admin:<identity>`, `migration`, later a provider; a reference) or `void` |
 
-- **Running out.** A paid subscription keeps its plan for **14 days' grace** after `endsAt` (`PlanService.Grace`).
-  Then, hourly (`RavenHosting:ExpiryIntervalMinutes`, 60), the service grants the `free` plan as an `expiry` grant,
-  noting why. Nothing is deleted: an identity storing more than the free plan allows is over quota, and its host
-  refuses new files until it upgrades. Admins can **extend** a paid one by months (from when it runs out, or from
-  now if that passed). Purchases made before `endsAt` existed get theirs from when they were bought.
+What each member gets is still a grant, now carrying the subscription's Id (`subscription_id`): grants are what the
+hosts are told. Where an identity's plan came from:
+
+| Grant source | | Until |
+|---|---|---|
+| `code` | signed up with an invitation code (when the host says who, on `/use`) | no end |
+| `admin` | an admin changed its plan; it comes off any subscription it was on | no end |
+| `purchase` | the owner, on a subscription they pay for | its term, then its grace |
+| `group` | a member of someone else's subscription, who joined it | its term, then its grace; or leaving's grace |
+| `expiry` | the service, after a subscription ran out or a member's grace after leaving was over | no end |
+
+- **Buying** (the upgrade page's test checkout, for now) makes a subscription the buyer owns, with its first invoice
+  paid. Someone owns one at a time: buying again changes its plan and term, paid from then (what was left is not
+  refunded); refused while it names more people than the new plan has seats, or their shares add up to more than
+  its storage. On a plan for one, the buyer takes the seat and the whole quota.
+- **Group plans.** The owner need not take a seat. They name each person by identity on `/account`; each gets a
+  join link (`/join/<token>`, 32 random bytes, working 14 days, and only signed in as the identity named, so it is
+  kept to show the owner again, not hashed) and joins after signing in with YouAuth. A share is held from the
+  invitation; by default an equal part, in whole GB, of what is unassigned between the seats left. Shares are at
+  least 1 GB (`SubscriptionStore.MinimumShareBytes`) and add up to no more than the pool; **Split evenly** divides it
+  between everyone but those leaving. A changed share is set on the member's host as a new grant.
+- **One plan at a time.** An identity is an active member of one subscription at most (a unique index). Joining
+  another leaves the one it was on at once; on a plan for one it owns, auto-renew is turned off.
+- **Leaving.** A member removed by the owner, or who leaves, keeps the plan, and its seat and share stay held, for
+  **14 days' grace** (`PlanService.Grace`); then it goes to the `free` plan. A cancelled or declined invitation frees
+  its seat at once.
+- **Renewing.** With auto-renew on, an `open` invoice for the next term is made 7 days before the term runs out
+  (`SubscriptionService.InvoiceAhead`), at the price bought. Paid (by an admin's **Mark paid**, or the owner's test
+  checkout on `/account`), the term moves on; paid in the grace, the new term still starts when the old one ran out.
+  Turning auto-renew off voids an open invoice.
+- **Running out.** Unpaid, or with auto-renew off, a subscription keeps going for 14 days' grace after its term. Then,
+  hourly (`RavenHosting:ExpiryIntervalMinutes`, 60), it ends and every member still on it is granted the `free` plan
+  (an `expiry` grant, noting why), unless an admin gave them another plan meanwhile. Nothing is deleted: an identity
+  storing more than the free plan allows is over quota, and its host refuses new files until it upgrades. Admins can
+  **extend** one by months (from when it runs out, or from now if that passed), which voids an open invoice.
 - **Add-ons** (`plan_add_ons`) are on top of the plan, whatever plan the identity is on, given by admins: more
   storage, a public home page on or off (off is a safety tool), and a public email address and more email aliases,
   which are only recorded until email is offered. Each can end on a date (removed hourly once it passed). The host
-  is given the plan's quota plus every storage add-on, and the latest public home page add-on in place of the plan's
-  (`Entitlement`); a change is set on the host straight away (`PlanService.ReapplyAsync`), and the daily reconcile
-  compares the host with plan plus add-ons. The upgrade page compares plans without storage add-ons, which stay.
+  is given the plan's quota (a member's share, on a group plan) plus every storage add-on, and the latest public home
+  page add-on in place of the plan's (`Entitlement`); a change is set on the host straight away
+  (`PlanService.ReapplyAsync`), and the daily reconcile compares the host with plan plus add-ons. The upgrade page
+  compares plans without storage add-ons, which stay.
 - **History:** every grant keeps `note` (why), `madeBy` (the admin, on the admin pages), and `reappliedAt` (when it
   was last set on the host again: an add-on changed, or the host drifted); add-ons keep who added and removed them.
+- **Before subscriptions**, a purchase was a grant with its price and end (`price_months`, `price_amount_cents`,
+  `ends_at`). The first time the service starts, each identity whose latest grant was one becomes the owner and only
+  member of a subscription for the rest of that term, with auto-renew off and one invoice paid by `migration`;
+  earlier purchases keep their price in their note; then those columns are dropped.
 
 ## Plan grants
 
 The service also gives identities plans: a **grant** says identity X is owed plan P, and the service sets it on
 the identity host that serves X, with what P gives: its quota and public web presence, as they were when the grant
-was made. P must be one of the [plans](#plans) (400 otherwise). Admins make grants now (`./raven.sh grant`); the
-upgrade page makes `purchase` grants. A plan is set only through a grant, never by a link.
+was made (or, on a group plan, the member's share). P must be one of the [plans](#plans) (400 otherwise). Admins make
+grants (`./raven.sh grant`); [subscriptions](#subscriptions) make `purchase`, `group` and `expiry` grants. A plan is
+set only through a grant, never by a link.
 
 ### Finding the host
 
@@ -224,6 +261,7 @@ alone: the host keeps the identity's own.
 | `pending` | not set yet: no host has the identity, a host is down, or it answered something else. Tried again after 1, 2, 4... minutes, at most every 6 hours, for as long as it takes: a paid plan is never given up on |
 | `applied` | the host has it; `host` says which, `appliedAt` when |
 | `failed` | the host refused the plan (`400`: an empty plan Id or a quota that is not more than 0, which this service never sends). Not retried by itself; once the cause is fixed, `retry` |
+| `superseded` | a newer grant for the same identity was made before the host had this one: never set, so it cannot land over the newer plan or share |
 
 A background task tries due grants every minute (`RavenHosting__GrantRetryIntervalSeconds`) and, once a day
 (`RavenHosting__ReconcileIntervalHours`), reconciles: for each identity it asks the host for the plan Id, quota and
@@ -237,7 +275,7 @@ identity a new grant instead.
 
 | Call | Answer |
 |---|---|
-| `POST / {identity, planId, source?, reference?, host?, months?}` | the grant, with the plan's `quotaBytes` and `publicWebPresence` now, after trying to set it straight away. A `planId` that is not a plan is a 400. `months` is the term bought, for a purchase: the grant records it and the plan's price for it now (`priceMonths`, `priceAmountCents`), and a term the plan has no price for is a 400. `source` is `code`, `purchase` or `admin` (the default); `reference` is the caller's id for it, e.g. a payment id, made up when left out. The same `reference` again is the same grant (not set twice); for another identity or plan it is a 409 |
+| `POST / {identity, planId, source?, reference?, host?}` | the grant, with the plan's `quotaBytes` and `publicWebPresence` now, after trying to set it straight away; a plan with no end. A `planId` that is not a plan is a 400. Paid plans are [subscriptions](#subscriptions), not made here. `source` is `admin` (the default) or another of the grant sources; `reference` is the caller's id for it, e.g. a payment id, made up when left out. The same `reference` again is the same grant (not set twice); for another identity or plan it is a 409 |
 | `GET /?identity=<odinId>&status=<status>` | the grants, newest first; both filters optional |
 | `POST /<id>/retry` | tries a pending or failed grant again now; 404 if there is none, 409 if it is already applied |
 
@@ -257,6 +295,16 @@ The public pages, in `SitePages.cs`, on the same Razor components and stylesheet
   then, the page shows without it.
 - **`/sign-in?plan=<id>`**: a box for the identity, sent to `/upgrade?id=<identity>&plan=<id>`, which signs them in
   (below) and then goes straight to confirming that plan. The plan rides along in a short cookie on `/upgrade`.
+- **`/account`** ("Your plan" in the header, for someone signed in; `/sign-in?next=account` and back otherwise): their
+  plan as their host says; invitations waiting for them; the subscription they pay for, with its price, when it
+  renews or ends, **auto-renew** on or off, **Change plan**, its invoices (an open one paid with the test checkout,
+  for those who may buy), and the people on it with their shares, join links, **New link**, **Remove** and **Cancel
+  invitation**, **Save shares**, **Split evenly**, **Add someone**, **Use a seat myself**; or the plan someone else pays
+  for that they are on, with **Leave this plan**. ([Subscriptions](#subscriptions) has the rules.)
+- **`/join/<token>`**: a join link. Not signed in, it signs them in (`/sign-in?next=join/<token>`) and comes back.
+  Signed in as the identity named, it shows whose plan, their share, what it gives, and what happens to the plan
+  they are on now, with **Join** and **Decline**; signed in as anyone else, or once used, replaced, expired or ended,
+  it says why not.
 - **`/terms-and-conditions`**, **`/privacy-policy`**: as they were on the old Netlify site (ravenhosting-web).
 - **`/report`**: the report form for content that breaks the terms; `/report/content`, where identity hosts link
   (`Host:ReportContentUrl`), redirects to it. Reports are kept in the database (`content_reports`) and read with
@@ -296,19 +344,20 @@ Where an owner gets a bigger plan. Their owner console sends them to
    The card with its plan Id is marked "Your plan"; every other says how it compares ("940 GB more than now", "Less
    than you have now (1 TB)"), and one smaller than what the identity stores cannot be chosen, confirmed or bought
    (`PlanFit`). Anything a newer host adds to its answer is kept (`IdentityOnHost.More`).
-4. **Confirm** (`/upgrade/confirm?plan=<id>`): "Change your plan from A to B", then **How would you like to
-   pay?**, one choice per term (the shortest chosen), and **Continue to checkout**.
-5. **Test checkout** (`/upgrade/checkout?plan=<id>&months=<term>`): an order summary with the term's price, and a
+4. **Confirm** (`/upgrade/confirm?plan=<id>`): "Change your plan from A to B", on a group plan **Who is it for?**
+   (me and others, taking a seat, or only others), then **How would you like to pay?**, one choice per term (the
+   shortest chosen), and **Continue to checkout**. Someone who already pays for a plan is told this changes it.
+5. **Test checkout** (`/upgrade/checkout?plan=<id>&months=<term>&seat=yes|no`): an order summary with the term's price, and a
    card form under a banner saying
    **no payment is taken**. The card fields have no names, so the browser never sends them; the server reads only
-   `planId` and `months` and ignores anything else. **Complete purchase** posts it. A plan sold for one term needs
+   `planId`, `months` and `seat` and ignores anything else. **Complete purchase** posts it. A plan sold for one term needs
    no `months`; for several, a term it isn't sold for is a 400 that sends you back to choose.
-6. **The stand-in for payment** (`POST /upgrade/checkout`): it makes a `purchase` grant for the plan and term (see
-   Plan grants), with what the plan gives and the term's price now, which sets it on the identity's host straight
-   away or keeps trying, and redirects to done. Renewal, expiry and what happens when a term runs out come with real
-   payment.
-7. **Done** (`/upgrade/done?grant=<id>`, only for the signed-in identity's own purchases): "You're on B", or
-   that the change is on its way, or that it failed, with the term and price bought; then **Back to your Homebase**.
+6. **The stand-in for payment** (`POST /upgrade/checkout`): it buys the plan for the term, a
+   [subscription](#subscriptions) with its first invoice paid by `test-checkout`, which sets the plan on the
+   buyer's host straight away (or keeps trying) if they take a seat, and redirects to done.
+7. **Done** (`/upgrade/done?subscription=<id>`, only for the signed-in identity's own): "You're on B", or that the
+   change is on its way, or that it failed, with the price and when it renews; then **Back to your Homebase**, or
+   on a group plan **Name the people on it** (`/account`).
 
 A plan not for sale cannot be confirmed, checked out or bought (400). The done page names the plan bought even
 once it is no longer for sale.
@@ -343,10 +392,13 @@ three groups:
 
 - **Subscriptions:** every identity's [subscription](#subscriptions), filterable (paid, free, expiring, in grace,
   host not in sync, with add-ons); each one's page with its plan, until when, what it gets with its add-ons, its host,
-  **Extend**, add-ons, changing its plan, and its history. **Plans** and their prices.
+  whose paid plan it is on, the subscription it pays for (term, auto-renew on or off, members and shares, invoices
+  with **Mark paid** and a reference, **Extend**), add-ons, changing its plan, and its history. **Plans**, their seats
+  and their prices.
 - **Marketing:** invitation codes (make, change, disable, take or give back a use as a signup would, copy the code
   or its sign-up link); **Channels**, the code stats by source; **Renewals**, paid subscriptions running out in 7, 30
-  or 90 days or in their grace, and those moved back to free, with a CSV export.
+  or 90 days or in their grace, with their owner, seats, auto-renew and any open invoice, and those moved back to
+  free, with a CSV export.
 - **Safety:** **Abuse reports**, filed on the site's `/report` page ("Report abuse").
 
 The overview shows how each group stands and the subscriptions that need a look. **Checkout** (who may buy) is a
@@ -396,8 +448,10 @@ never to self-hosted servers.
 
 - Grants are kept in this service: it now holds which identities were given which plans, and why.
 - The plan key lets its holder set any identity's plan on every host; it cannot do anything else there.
-- The upgrade page takes no payment: completing the test checkout grants the plan. It must not be turned on for real owners until payment
-  replaces the stand-in.
+- The upgrade page takes no payment: completing the test checkout, or paying an invoice on `/account`, marks it paid.
+  It must not be turned on for real owners until payment replaces the stand-in. A provider would only mark invoices
+  paid (`SubscriptionService.PayAsync`); nobody is told an invoice is open, other than on `/account` and Renewals.
+- A change of plan takes effect at once; there is no downgrade at renewal, and no proration.
 
 - Requests are limited per client IP. Only odin-core can limit the people behind its public signup page, so
   that limit belongs there.

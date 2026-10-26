@@ -8,21 +8,19 @@ namespace Raven.Hosting;
 /// serves the identity, and retries until that host has it.
 /// </summary>
 /// <param name="QuotaBytes">The plan's quota when the grant was made, sent to the host with the plan; null on grants
-/// made before plans were kept here, which send the plan Id alone</param>
+/// made before plans were kept here, which send the plan Id alone. On a group plan, the member's share of its pool</param>
 /// <param name="PublicWebPresence">The plan's public web presence when the grant was made; null like QuotaBytes</param>
-/// <param name="PriceMonths">For a purchase, the billing term bought (12 is a year); null for a grant with no price</param>
-/// <param name="PriceAmountCents">What that term cost when bought, in US cents; null like PriceMonths</param>
 /// <param name="Host">The provisioning domain of the host the plan was set on; null until it was</param>
 /// <param name="HostHint">The host the request said the identity is on; tried first, if it is a known host</param>
-/// <param name="Source">Why the identity is owed it: <c>code</c>, <c>purchase</c> or <c>admin</c></param>
+/// <param name="Source">Why the identity is owed it: <see cref="PlanGrantSource"/></param>
 /// <param name="Reference">The caller's id for it, e.g. a payment id; unique, so the same one twice is one grant</param>
 /// <param name="Status"><c>pending</c> until the host has it, then <c>applied</c>; <c>failed</c> when the host
-/// refused the plan, which no retry by itself will change</param>
+/// refused the plan, which no retry by itself will change; <c>superseded</c> when a newer grant for the identity came
+/// before the host had it, so it is never set over the newer one</param>
 /// <param name="Attempts">How many times the service tried to set it</param>
 /// <param name="NextAttemptAt">When a pending grant is tried again (unix ms)</param>
-/// <param name="EndsAt">For a purchase, when the term bought runs out (unix ms): bought at plus its months, later if
-/// an admin extended it; null for a grant that does not end (a code's, an admin's). After a grace period the identity
-/// goes back to the free plan (<see cref="PlanGrantWorker"/>)</param>
+/// <param name="SubscriptionId">The paid subscription that covers it (<see cref="SubscriptionStore"/>), which says
+/// until when; null for a grant that does not end (a code's, an admin's, the free plan after one ran out)</param>
 /// <param name="ReappliedAt">When it was last set on the host again after it was applied: an add-on changed, or the
 /// host drifted; null until then</param>
 /// <param name="Note">Why it was made, as the admin or the service said: "support goodwill", "expired"</param>
@@ -34,8 +32,6 @@ public record PlanGrant(
     string PlanId,
     long? QuotaBytes,
     bool? PublicWebPresence,
-    int? PriceMonths,
-    long? PriceAmountCents,
     string Source,
     string Reference,
     string Status,
@@ -47,7 +43,7 @@ public record PlanGrant(
     long CreatedAt,
     long UpdatedAt,
     long? AppliedAt,
-    long? EndsAt = null,
+    long? SubscriptionId = null,
     long? ReappliedAt = null,
     string? Note = null,
     string? MadeBy = null)
@@ -61,8 +57,9 @@ public static class PlanGrantStatus
     public const string Pending = "pending";
     public const string Applied = "applied";
     public const string Failed = "failed";
+    public const string Superseded = "superseded";
 
-    public static readonly string[] All = [Pending, Applied, Failed];
+    public static readonly string[] All = [Pending, Applied, Failed, Superseded];
 }
 
 public static class PlanGrantSource
@@ -71,10 +68,13 @@ public static class PlanGrantSource
     public const string Purchase = "purchase";
     public const string Admin = "admin";
 
+    /// <summary>A member of someone else's group plan, who joined it</summary>
+    public const string Group = "group";
+
     /// <summary>The service, moving an identity whose paid term ran out (and its grace) back to the free plan</summary>
     public const string Expiry = "expiry";
 
-    public static readonly string[] All = [Code, Purchase, Admin, Expiry];
+    public static readonly string[] All = [Code, Purchase, Admin, Group, Expiry];
 }
 
 /// <summary>
@@ -112,12 +112,15 @@ public class PlanGrantStore
     //
 
     /// <summary>
-    /// Makes a pending grant of the plan with what it gives now, and the price it was bought at if any, or returns
-    /// the one already made with this reference. A reference reused for another identity or plan is refused.
+    /// Makes a pending grant of the plan with what it gives now, or returns the one already made with this reference.
+    /// A reference reused for another identity or plan is refused.
     /// </summary>
+    /// <param name="quotaBytes">The quota to give, when not the plan's: a member's share of a group plan</param>
+    /// <param name="subscriptionId">The paid subscription it comes from, if any</param>
     /// <returns>The grant, and whether this call made it</returns>
-    public async Task<(PlanGrant Grant, bool Created)> CreateAsync(string? identity, Plan plan, PlanPrice? price,
-        string? source, string? reference, string? hostHint, long now, string? note = null, string? madeBy = null)
+    public async Task<(PlanGrant Grant, bool Created)> CreateAsync(string? identity, Plan plan, string? source,
+        string? reference, string? hostHint, long now, string? note = null, string? madeBy = null,
+        long? quotaBytes = null, long? subscriptionId = null)
     {
         var normalizedIdentity = DomainNames.Normalize(identity) ??
                                  throw new InvalidPlanGrantRequestException("Invalid identity");
@@ -143,28 +146,42 @@ public class PlanGrantStore
         await using var command = connection.CreateCommand();
         command.CommandText =
             """
-            INSERT INTO plan_grants (identity, plan_id, quota_bytes, public_web_presence, price_months,
-                                     price_amount_cents, source, reference, status, host_hint, attempts,
-                                     next_attempt_at, created_at, updated_at, ends_at, note, made_by)
-            VALUES (@identity, @planId, @quotaBytes, @publicWebPresence, @priceMonths, @priceAmountCents, @source,
-                    @reference, 'pending', @hostHint, 0, @now, @now, @now, @endsAt, @note, @madeBy)
+            INSERT INTO plan_grants (identity, plan_id, quota_bytes, public_web_presence, source, reference, status,
+                                     host_hint, attempts, next_attempt_at, created_at, updated_at, subscription_id,
+                                     note, made_by)
+            VALUES (@identity, @planId, @quotaBytes, @publicWebPresence, @source, @reference, 'pending', @hostHint, 0,
+                    @now, @now, @now, @subscriptionId, @note, @madeBy)
             ON CONFLICT (reference) DO NOTHING;
             SELECT changes();
             """;
+        // A grant not yet on its host gives way to a newer one for the same identity: retried later, it would set the
+        // older plan or share over the newer
+        await using var supersede = connection.CreateCommand();
+        supersede.CommandText =
+            """
+            UPDATE plan_grants SET status = 'superseded', next_attempt_at = NULL, updated_at = @now
+            WHERE identity = @identity AND status IN ('pending', 'failed')
+              AND id < (SELECT id FROM plan_grants WHERE reference = @reference);
+            """;
+        supersede.Parameters.AddWithValue("@identity", normalizedIdentity);
+        supersede.Parameters.AddWithValue("@reference", normalizedReference);
+        supersede.Parameters.AddWithValue("@now", now);
         command.Parameters.AddWithValue("@identity", normalizedIdentity);
         command.Parameters.AddWithValue("@planId", plan.Id);
-        command.Parameters.AddWithValue("@quotaBytes", plan.QuotaBytes);
+        command.Parameters.AddWithValue("@quotaBytes", quotaBytes ?? plan.QuotaBytes);
         command.Parameters.AddWithValue("@publicWebPresence", plan.PublicWebPresence);
-        command.Parameters.AddWithValue("@priceMonths", (object?)price?.Months ?? DBNull.Value);
-        command.Parameters.AddWithValue("@priceAmountCents", (object?)price?.AmountCents ?? DBNull.Value);
         command.Parameters.AddWithValue("@source", normalizedSource);
         command.Parameters.AddWithValue("@reference", normalizedReference);
         command.Parameters.AddWithValue("@hostHint", (object?)normalizedHint ?? DBNull.Value);
         command.Parameters.AddWithValue("@now", now);
-        command.Parameters.AddWithValue("@endsAt", price == null ? DBNull.Value : TermEnd(now, price.Months));
+        command.Parameters.AddWithValue("@subscriptionId", (object?)subscriptionId ?? DBNull.Value);
         command.Parameters.AddWithValue("@note", (object?)note?.Trim() is "" or null ? DBNull.Value : note!.Trim());
         command.Parameters.AddWithValue("@madeBy", (object?)madeBy ?? DBNull.Value);
         var created = Convert.ToInt64(await command.ExecuteScalarAsync()) == 1;
+        if (created)
+        {
+            await supersede.ExecuteNonQueryAsync();
+        }
 
         var grant = (await GetByReferenceAsync(connection, normalizedReference))!;
         if (!created && (grant.Identity != normalizedIdentity || !string.Equals(grant.PlanId, plan.Id, StringComparison.OrdinalIgnoreCase)))
@@ -272,39 +289,6 @@ public class PlanGrantStore
         return await ReadOneAsync(command);
     }
 
-    /// <summary>
-    /// Subscriptions whose paid term ended before <paramref name="before"/> and that are still current: due to go
-    /// back to the free plan
-    /// </summary>
-    public async Task<List<PlanGrant>> EndedAsync(long before)
-    {
-        await using var connection = await OpenAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = Select +
-                              " WHERE id IN (SELECT MAX(id) FROM plan_grants GROUP BY identity)" +
-                              " AND ends_at IS NOT NULL AND ends_at < @before ORDER BY ends_at;";
-        command.Parameters.AddWithValue("@before", before);
-        return await ReadAllAsync(command);
-    }
-
-    /// <summary>
-    /// Adds months to a paid term: from when it ends, or from now if that has passed. Null when there is no such
-    /// grant or it has no term.
-    /// </summary>
-    public async Task<PlanGrant?> ExtendAsync(long id, int months, long now)
-    {
-        if (months is < 1 or > BillingTerm.LongestMonths)
-        {
-            throw new InvalidPlanGrantRequestException($"Extend by 1 to {BillingTerm.LongestMonths} months");
-        }
-        var grant = await GetAsync(id);
-        if (grant?.EndsAt == null)
-        {
-            return null;
-        }
-        return await UpdateAsync(id, "ends_at = @endsAt", now, ("@endsAt", TermEnd(Math.Max(grant.EndsAt.Value, now), months)));
-    }
-
     /// <summary>When a term of this many months from <paramref name="from"/> (unix ms) runs out</summary>
     public static long TermEnd(long from, int months) =>
         DateTimeOffset.FromUnixTimeMilliseconds(from).AddMonths(months).ToUnixTimeMilliseconds();
@@ -397,8 +381,9 @@ public class PlanGrantStore
 
     private const string Select =
         """
-        SELECT id, identity, plan_id, quota_bytes, public_web_presence, price_months, price_amount_cents, source, reference, status, host, host_hint, attempts, last_error, next_attempt_at,
-               created_at, updated_at, applied_at, ends_at, reapplied_at, note, made_by
+        SELECT id, identity, plan_id, quota_bytes, public_web_presence, source, reference, status, host, host_hint,
+               attempts, last_error, next_attempt_at, created_at, updated_at, applied_at, subscription_id, reapplied_at,
+               note, made_by
         FROM plan_grants
         """;
 
@@ -457,23 +442,21 @@ public class PlanGrantStore
             reader.GetString(2),
             Number(3),
             Flag(4),
-            reader.IsDBNull(5) ? null : reader.GetInt32(5),
-            Number(6),
+            reader.GetString(5),
+            reader.GetString(6),
             reader.GetString(7),
-            reader.GetString(8),
-            reader.GetString(9),
-            Text(10),
+            Text(8),
+            Text(9),
+            reader.GetInt32(10),
             Text(11),
-            reader.GetInt32(12),
-            Text(13),
-            Number(14),
-            reader.GetInt64(15),
-            reader.GetInt64(16),
+            Number(12),
+            reader.GetInt64(13),
+            reader.GetInt64(14),
+            Number(15),
+            Number(16),
             Number(17),
-            Number(18),
-            Number(19),
-            Text(20),
-            Text(21));
+            Text(18),
+            Text(19));
     }
 
     private async Task<SqliteConnection> OpenAsync()
@@ -518,8 +501,6 @@ public class PlanGrantStore
                     plan_id TEXT NOT NULL,
                     quota_bytes INTEGER NULL,
                     public_web_presence INTEGER NULL,
-                    price_months INTEGER NULL,
-                    price_amount_cents INTEGER NULL,
                     source TEXT NOT NULL,
                     reference TEXT NOT NULL UNIQUE,
                     status TEXT NOT NULL,
@@ -530,7 +511,11 @@ public class PlanGrantStore
                     next_attempt_at INTEGER NULL,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL,
-                    applied_at INTEGER NULL
+                    applied_at INTEGER NULL,
+                    subscription_id INTEGER NULL,
+                    reapplied_at INTEGER NULL,
+                    note TEXT NULL,
+                    made_by TEXT NULL
                 );
                 CREATE INDEX IF NOT EXISTS ix_plan_grants_identity ON plan_grants(identity);
                 CREATE INDEX IF NOT EXISTS ix_plan_grants_due ON plan_grants(status, next_attempt_at);
@@ -545,19 +530,13 @@ public class PlanGrantStore
             // Grants made before plans were kept here lack what the plan gave
             await AddColumnIfMissingAsync(connection, "quota_bytes", "INTEGER NULL");
             await AddColumnIfMissingAsync(connection, "public_web_presence", "INTEGER NULL");
-            // and the price a purchase was made at
-            await AddColumnIfMissingAsync(connection, "price_months", "INTEGER NULL");
-            await AddColumnIfMissingAsync(connection, "price_amount_cents", "INTEGER NULL");
-            // Subscriptions: when a purchase runs out, when the host was last given it again, and why and by whom
-            // it was made
-            var addsEndsAt = await AddColumnIfMissingAsync(connection, "ends_at", "INTEGER NULL");
+            // and when the host was last given it again, why and by whom it was made, and the subscription it is from
             await AddColumnIfMissingAsync(connection, "reapplied_at", "INTEGER NULL");
             await AddColumnIfMissingAsync(connection, "note", "TEXT NULL");
             await AddColumnIfMissingAsync(connection, "made_by", "TEXT NULL");
-            if (addsEndsAt)
-            {
-                await BackfillEndsAtAsync(connection);
-            }
+            await AddColumnIfMissingAsync(connection, "subscription_id", "INTEGER NULL");
+            await SubscriptionStore.EnsureTablesAsync(connection);
+            await MovePurchasesToSubscriptionsAsync(connection);
 
             _initialized = true;
         }
@@ -567,27 +546,96 @@ public class PlanGrantStore
         }
     }
 
-    // Purchases made before terms ended: they run out their term's months after they were bought
-    private static async Task BackfillEndsAtAsync(SqliteConnection connection)
+    // Before subscriptions, a purchase was a grant with its price and term (price_months, price_amount_cents, ends_at).
+    // Each identity whose latest grant is one becomes the owner and only member of a subscription for what is left of
+    // it, paid by one invoice; earlier purchases keep their price in their note. Then those columns go.
+    private static async Task MovePurchasesToSubscriptionsAsync(SqliteConnection connection)
     {
-        var purchases = new List<(long Id, long CreatedAt, int Months)>();
+        await using (var columns = connection.CreateCommand())
+        {
+            columns.CommandText = "SELECT COUNT(*) FROM pragma_table_info('plan_grants') WHERE name = 'price_months';";
+            if (Convert.ToInt64(await columns.ExecuteScalarAsync()) == 0)
+            {
+                return;
+            }
+        }
+
+        // The oldest purchases had no end kept: they ran out their term's months after they were bought
+        await AddColumnIfMissingAsync(connection, "ends_at", "INTEGER NULL");
+        await using var transaction = connection.BeginTransaction(deferred: false);
+        var purchases = new List<(long Id, string Identity, string PlanId, long Quota, bool Web, int Months, long Cents,
+            long CreatedAt, long EndsAt, bool Current)>();
         await using (var select = connection.CreateCommand())
         {
-            select.CommandText = "SELECT id, created_at, price_months FROM plan_grants WHERE price_months IS NOT NULL;";
+            select.CommandText =
+                """
+                SELECT g.id, g.identity, g.plan_id, COALESCE(g.quota_bytes, 0), COALESCE(g.public_web_presence, 0),
+                       g.price_months, COALESCE(g.price_amount_cents, 0), g.created_at,
+                       g.ends_at, g.id = (SELECT MAX(id) FROM plan_grants c WHERE c.identity = g.identity)
+                FROM plan_grants g WHERE g.price_months IS NOT NULL;
+                """;
             await using var reader = await select.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                purchases.Add((reader.GetInt64(0), reader.GetInt64(1), reader.GetInt32(2)));
+                purchases.Add((reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3),
+                    reader.GetBoolean(4), reader.GetInt32(5), reader.GetInt64(6), reader.GetInt64(7),
+                    reader.IsDBNull(8) ? TermEnd(reader.GetInt64(7), reader.GetInt32(5)) : reader.GetInt64(8),
+                    reader.GetBoolean(9)));
             }
         }
-        foreach (var (id, createdAt, months) in purchases)
+
+        foreach (var p in purchases)
         {
-            await using var update = connection.CreateCommand();
-            update.CommandText = "UPDATE plan_grants SET ends_at = @endsAt WHERE id = @id;";
-            update.Parameters.AddWithValue("@endsAt", TermEnd(createdAt, months));
-            update.Parameters.AddWithValue("@id", id);
-            await update.ExecuteNonQueryAsync();
+            var price = new PlanPrice(p.Months, p.Cents);
+            await using var command = connection.CreateCommand();
+            command.Parameters.AddWithValue("@id", p.Id);
+            command.Parameters.AddWithValue("@note", $"Bought, {price.Text}");
+            if (!p.Current)
+            {
+                command.CommandText = "UPDATE plan_grants SET note = COALESCE(note, @note) WHERE id = @id;";
+                await command.ExecuteNonQueryAsync();
+                continue;
+            }
+
+            command.CommandText =
+                """
+                INSERT INTO subscriptions (owner, plan_id, seats, pool_bytes, public_web_presence, term_months,
+                                           price_cents, auto_renew, status, period_start, period_end, created_at,
+                                           updated_at, note)
+                VALUES (@identity, @planId, 1, @quota, @web, @months, @cents, 0, 'active', @start, @end, @start, @start,
+                        'Bought before subscriptions');
+                INSERT INTO subscription_members (subscription_id, identity, status, quota_bytes, invited_at, joined_at)
+                VALUES (last_insert_rowid(), @identity, 'active', @quota, @start, @start);
+                INSERT INTO invoices (subscription_id, plan_id, term_months, amount_cents, period_start, period_end,
+                                      status, due_at, created_at, paid_at, paid_by)
+                SELECT subscription_id, @planId, @months, @cents, @start, @end, 'paid', @start, @start, @start, 'migration'
+                FROM subscription_members WHERE id = last_insert_rowid();
+                UPDATE plan_grants SET note = COALESCE(note, @note),
+                    subscription_id = (SELECT subscription_id FROM invoices WHERE id = last_insert_rowid())
+                WHERE id = @id;
+                """;
+            command.Parameters.AddWithValue("@identity", p.Identity);
+            command.Parameters.AddWithValue("@planId", p.PlanId);
+            command.Parameters.AddWithValue("@quota", p.Quota);
+            command.Parameters.AddWithValue("@web", p.Web);
+            command.Parameters.AddWithValue("@months", p.Months);
+            command.Parameters.AddWithValue("@cents", p.Cents);
+            command.Parameters.AddWithValue("@start", p.CreatedAt);
+            command.Parameters.AddWithValue("@end", p.EndsAt);
+            await command.ExecuteNonQueryAsync();
         }
+
+        await using (var drop = connection.CreateCommand())
+        {
+            drop.CommandText =
+                """
+                ALTER TABLE plan_grants DROP COLUMN price_months;
+                ALTER TABLE plan_grants DROP COLUMN price_amount_cents;
+                ALTER TABLE plan_grants DROP COLUMN ends_at;
+                """;
+            await drop.ExecuteNonQueryAsync();
+        }
+        await transaction.CommitAsync();
     }
 
     // Whether it added it

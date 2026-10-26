@@ -5,9 +5,13 @@
     <p>@Plan.Description</p>
 }
 <ul class="gives">
+    @if (Plan.IsGroup)
+    {
+        <li class="has">For up to @Plan.Seats people<span class="explain">Each on their own identity, sharing @(ShowStorage ? "its storage" : Plan.Storage): you choose how much each gets</span></li>
+    }
     @if (ShowStorage)
     {
-        <li class="has">@Plan.Storage of storage</li>
+        <li class="has">@Plan.Storage of storage@(Plan.IsGroup ? ", shared" : "")</li>
     }
     <Feature ShowExplain="ShowExplain" Has="Plan.PublicWebPresence" Name="A public home page"
              Explain="A page at your domain that anyone can visit, without signing in" />

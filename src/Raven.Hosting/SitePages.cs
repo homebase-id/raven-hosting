@@ -30,6 +30,9 @@ public static class SitePages
     /// <summary>Signing in to the admin pages: back to them afterwards</summary>
     public const string SignInForAdmin = SignIn + "?next=admin";
 
+    /// <summary>Signing in to go on to a page after: /account, or a join link (<see cref="UpgradePage.NextPath"/>)</summary>
+    public static string SignInThen(string next) => $"{SignIn}?next={Uri.EscapeDataString(next)}";
+
     public static void Map(WebApplication app)
     {
         app.MapGet("/", async (HttpContext context, UpgradeOptions options, UpgradeSession session, PlanService plans,
@@ -74,14 +77,14 @@ public static class SitePages
             }
 
             var chosen = await planStore.GetAsync(plan) is { } p && UpgradePage.IsForSale(p) ? p : null;
-            var toAdmin = next == UpgradePage.NextAdmin;
+            var nextPath = UpgradePage.NextPath(next);
             if (session.Read(context) != null)
             {
-                return Results.Redirect(toAdmin ? AdminPages.Root
-                    : chosen == null ? UpgradePage.Root : UpgradePage.ConfirmUrl(chosen.Id));
+                return Results.Redirect(nextPath
+                    ?? (chosen == null ? UpgradePage.Root : UpgradePage.ConfirmUrl(chosen.Id)));
             }
 
-            return UpgradePage.Show<SignInPage>(new { Plan = toAdmin ? null : chosen, ToAdmin = toAdmin });
+            return UpgradePage.Show<SignInPage>(new { Plan = nextPath != null ? null : chosen, Next = nextPath != null ? next : null });
         });
 
         app.MapGet("/terms-and-conditions", (UpgradeOptions options) =>
