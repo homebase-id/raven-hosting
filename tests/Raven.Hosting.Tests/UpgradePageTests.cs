@@ -211,7 +211,7 @@ public class UpgradePageTests
         Assert.That(html, Does.Contain("Card number"));
         var form = Regex.Match(html, "<form method=\"post\" action=\"/upgrade/checkout\".*?</form>", RegexOptions.Singleline).Value;
         var names = Regex.Matches(form, "name=\"([^\"]+)\"").Select(m => m.Groups[1].Value);
-        Assert.That(names, Is.EquivalentTo(new[] { "__RequestVerificationToken", "planId", "months", "seat" }),
+        Assert.That(names, Is.EquivalentTo(new[] { "__RequestVerificationToken", "planId", "months" }),
             "the card fields have no names, so the browser never sends them");
     }
 

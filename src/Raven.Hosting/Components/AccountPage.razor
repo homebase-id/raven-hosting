@@ -166,12 +166,12 @@
                                             <button type="submit" class="link-button">New link</button>
                                         </form>
                                     }
-                                    @if (!m.IsLeaving)
+                                    @if (!m.IsLeaving && m.Identity != Identity)
                                     {
                                         <form method="post" action="@($"{AccountPages.Root}/members/{m.Id}/remove")" class="inline-form"
                                               onsubmit="return confirm('@(RemoveQuestion(m))')">
                                             <AntiforgeryField Token="Antiforgery" />
-                                            <button type="submit" class="link-button">@(m.Status == MemberStatus.Invited ? "Cancel invitation" : m.Identity == Identity ? "Give up my seat" : "Remove")</button>
+                                            <button type="submit" class="link-button">@(m.Status == MemberStatus.Invited ? "Cancel invitation" : "Remove")</button>
                                         </form>
                                     }
                                 </td>
@@ -215,14 +215,6 @@
                     <button type="submit" class="button">Add</button>
                 </form>
                 <p class="hint">They get a link to join, which works only when they sign in as that identity.</p>
-                @if (Owned.OwnerSeat == null)
-                {
-                    <form method="post" action="@($"{AccountPages.Root}/members")" class="actions">
-                        <AntiforgeryField Token="Antiforgery" />
-                        <input type="hidden" name="identity" value="@Identity">
-                        <button type="submit" class="button secondary-outline">Use a seat myself</button>
-                    </form>
-                }
             }
             else if (s.IsGroup)
             {
@@ -309,7 +301,5 @@
 
     private string RemoveQuestion(SubscriptionMember m) => m.Status == MemberStatus.Invited
         ? $"Cancel the invitation to {m.Identity}? Their link stops working."
-        : m.Identity == Identity
-            ? $"Give up your seat? You keep the plan for {PlanService.Grace.Days} days, then go to the free plan; you still pay for it."
-            : $"Remove {m.Identity}? They keep the plan for {PlanService.Grace.Days} days, then go to the free plan.";
+        : $"Remove {m.Identity}? They keep the plan for {PlanService.Grace.Days} days, then go to the free plan.";
 }

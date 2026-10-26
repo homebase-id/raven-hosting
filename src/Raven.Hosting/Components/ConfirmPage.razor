@@ -3,7 +3,7 @@
     @if (Owned != null)
     {
         <p class="banner" role="note">
-            This changes your @Owned.PlanName subscription to @Plan.Name, paid from today. What is left of its term is not refunded.
+            This changes your @Owned.PlanName subscription to @Plan.Name, from today. What is left of it is not lost: its value is added to the new plan as extra time.
             @if (Owned.Holding.Count(m => m.Identity != Owned.Subscription.Owner) is > 0 and var others)
             {
                 <text> The @(others == 1 ? "person" : $"{others} people") on it stay on it.</text>
@@ -24,12 +24,7 @@
         <input type="hidden" name="plan" value="@Plan.Id">
         @if (Plan.IsGroup)
         {
-            <fieldset>
-                <legend>Who is it for?</legend>
-                <label><input type="radio" name="seat" value="yes" checked> Me and others: I take one of its @Plan.Seats seats</label>
-                <label><input type="radio" name="seat" value="no"> Only others: I pay, and keep my own plan as it is</label>
-            </fieldset>
-            <p class="hint">After paying, you name the people on it; each joins with a link. You choose how much of its @Plan.Storage each gets.</p>
+            <p class="hint">You take one of its @Plan.Seats seats. After paying, you name the people on it; each joins with a link. You choose how much of its @Plan.Storage each gets.</p>
         }
         <fieldset>
             <legend>How would you like to pay?</legend>

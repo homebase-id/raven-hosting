@@ -6,15 +6,18 @@
         <h2>@Plan.Name</h2>
         <PlanDetails Plan="Plan" ShowPrices="false" />
         <p class="price">@Price.Text</p>
-        <p class="muted">@(TakesSeat ? $"For {Identity}" : $"Paid by {Identity}, for the people you name")@(Plan.IsGroup ? $", up to {Plan.Seats}" : "")</p>
-        <p class="muted">Renews every @BillingTerm.Name(Price.Months) until you turn it off.</p>
+        <p class="muted">For @Identity@(Plan.IsGroup ? $" and up to {Plan.Seats - 1} more" : "")</p>
+        @if (Carried != null)
+        {
+            <p class="carried">Includes @Carried from your @CarriedFrom plan: what was left of it is not lost.</p>
+        }
+        <p class="muted">Runs until @DateTimeOffset.FromUnixTimeMilliseconds(Until).ToString("d MMMM yyyy"), then renews every @BillingTerm.Name(Price.Months) until you turn it off.</p>
     </div>
 
     <form method="post" action="@($"{UpgradePage.Root}/checkout")" class="card checkout">
         <AntiforgeryField Token="Antiforgery" />
         <input type="hidden" name="planId" value="@Plan.Id">
         <input type="hidden" name="months" value="@Price.Months">
-        <input type="hidden" name="seat" value="@(TakesSeat ? "yes" : "no")">
         <label>Name on card <input autocomplete="off" placeholder="Frodo Baggins"></label>
         <label>Card number <input autocomplete="off" inputmode="numeric" placeholder="4242 4242 4242 4242"></label>
         <div class="row">
@@ -33,7 +36,11 @@
     [Parameter] public PlanPrice Price { get; set; } = null!;
     [Parameter] public string Identity { get; set; } = "";
 
-    /// <summary>Whether the buyer takes a seat: always on a plan for one</summary>
-    [Parameter] public bool TakesSeat { get; set; } = true;
+    /// <summary>The time carried over from the plan they pay for now ("about 3 months"); null when there is none</summary>
+    [Parameter] public string? Carried { get; set; }
+    [Parameter] public string? CarriedFrom { get; set; }
+
+    /// <summary>When the new term runs out, with any time carried over (unix ms)</summary>
+    [Parameter] public long Until { get; set; }
     [Parameter] public Microsoft.AspNetCore.Antiforgery.AntiforgeryTokenSet Antiforgery { get; set; } = null!;
 }

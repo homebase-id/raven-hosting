@@ -38,10 +38,9 @@
     [Parameter] public string Token { get; set; } = "";
     [Parameter] public Microsoft.AspNetCore.Antiforgery.AntiforgeryTokenSet Antiforgery { get; set; } = null!;
 
+    // A group plan they pay for never gets here: the invitation is refused first (SubscriptionService.InvitationAsync)
     private string Instead(SubscriptionView now) =>
         now.Subscription.Owner != Member.Identity
             ? $"You are on {now.Subscription.Owner}'s {now.PlanName} now: joining takes you off it."
-            : now.Subscription.IsGroup
-                ? $"You have a seat on your own {now.PlanName} now: joining gives it up. You still pay for {now.PlanName}."
-                : $"You pay for {now.PlanName} now: joining stops it renewing. What is left of its term is not refunded.";
+            : $"You pay for {now.PlanName} now: joining stops it renewing. What is left of its term is not refunded.";
 }

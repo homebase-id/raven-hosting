@@ -1289,3 +1289,12 @@ td .link-button {
 .add-member label:first-of-type input {
   width: 100%;
 }
+
+/* Time carried over from the plan they pay for now: a soft Ember Tint note */
+.carried {
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius);
+  background: var(--ember-tint);
+  color: var(--night);
+  font-weight: 500;
+}
