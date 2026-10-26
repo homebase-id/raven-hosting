@@ -3,6 +3,8 @@
 <SitePage Title="Private hosting for your Homebase" Wide="true"
           Description="Raven Hosting hosts Homebase identities: your photos, chat and feed, encrypted, on your own domain. Start free; pay for more room.">
     <Lead>
+        @* The app-icon tile: the brand's one gradient on this screen *@
+        <img class="hero-mark" src="/assets/brand/icon.svg" alt="" width="192" height="192">
         <p class="intro">
             Your photos, chat and feed on your own Homebase identity, encrypted so only you can read them.
             @if (Free != null)
@@ -15,8 +17,8 @@
             }
         </p>
         <div class="actions">
-            <a class="button light" href="@SitePages.DefaultSignupUrl" data-signup>Create a free identity</a>
-            <a class="button on-dark" href="https://homebase.id">What is Homebase?</a>
+            <a class="button" href="@SitePages.DefaultSignupUrl" data-signup>Create a free identity</a>
+            <a class="button secondary" href="https://homebase.id">What is Homebase?</a>
         </div>
     </Lead>
     <ChildContent>
@@ -146,7 +148,7 @@
             <p>@(Identity == null ? "Create your Homebase identity in a minute, and move to a bigger plan when you need the room." : "Choose a bigger plan above whenever you need it.")</p>
             @if (Identity == null)
             {
-                <a class="button light" href="@SitePages.DefaultSignupUrl" data-signup>Create a free identity</a>
+                <a class="button" href="@SitePages.DefaultSignupUrl" data-signup>Create a free identity</a>
             }
         </section>
     </ChildContent>
