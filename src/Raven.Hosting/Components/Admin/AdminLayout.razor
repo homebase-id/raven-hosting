@@ -7,14 +7,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>@Title - Raven Hosting admin</title>
-<link rel="icon" href="/assets/raven-logo.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="@SiteAssets.AdminStylesheet">
 </head>
 <body class="min-h-full bg-page font-sans text-ink antialiased">
-<header class="bg-brand text-white">
+<header class="bg-night text-white">
     <div class="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
         <a href="@AdminPages.Root" class="flex min-w-0 items-center gap-2 font-heading text-lg font-bold text-white no-underline">
-            <img src="/assets/raven-logo.svg" alt="" width="28" height="28" class="size-7 shrink-0">
+            <img src="/assets/brand/mark-cream.svg" alt="" width="28" height="28" class="size-7 shrink-0">
             <span class="truncate">Raven Hosting <span class="font-sans text-sm font-semibold text-white/70">admin</span></span>
         </a>
         <div class="flex shrink-0 items-center gap-2 sm:gap-3">
@@ -27,10 +28,10 @@
                 }
                 <span class="@(Admin.Name != null ? "text-xs text-white/80" : "text-sm font-semibold")">@Admin.Identity</span>
             </span>
-            <a href="/" class="rounded-full border border-white/50 px-3 py-1 text-xs font-semibold text-white no-underline hover:bg-white/10">Site</a>
+            <a href="/" class="rounded-[10px] border border-white/50 px-3 py-1 text-xs font-semibold text-white no-underline hover:bg-white/10">Site</a>
             <form method="post" action="@($"{UpgradePage.Root}/sign-out")">
                 <input type="hidden" name="@Admin.Antiforgery.FormFieldName" value="@Admin.Antiforgery.RequestToken">
-                <button type="submit" class="cursor-pointer rounded-full border border-white/50 bg-transparent px-3 py-1 text-xs font-semibold text-white hover:bg-white/10">Sign out</button>
+                <button type="submit" class="cursor-pointer rounded-[10px] border border-white/50 bg-transparent px-3 py-1 text-xs font-semibold text-white hover:bg-white/10">Sign out</button>
             </form>
         </div>
     </div>

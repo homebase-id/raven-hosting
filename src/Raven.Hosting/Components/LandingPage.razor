@@ -3,6 +3,8 @@
 <SitePage Title="Private hosting for your Homebase" Wide="true"
           Description="Raven Hosting hosts Homebase identities: your photos, chat and feed, encrypted, on your own domain. Start free; pay for more room.">
     <Lead>
+        @* The app-icon tile: the brand's one gradient on this screen *@
+        <img class="hero-mark" src="/assets/brand/icon.svg" alt="" width="192" height="192">
         <p class="intro">
             Your photos, chat and feed on your own Homebase identity, encrypted so only you can read them.
             @if (Free != null)
@@ -15,8 +17,8 @@
             }
         </p>
         <div class="actions">
-            <a class="button light" href="@SitePages.DefaultSignupUrl" data-signup>Create a free identity</a>
-            <a class="button on-dark" href="https://homebase.id">What is Homebase?</a>
+            <a class="button" href="@SitePages.DefaultSignupUrl" data-signup>Create a free identity</a>
+            <a class="button secondary" href="https://homebase.id">What is Homebase?</a>
         </div>
     </Lead>
     <ChildContent>
@@ -63,6 +65,92 @@
                 <p class="muted">There are no paid plans for sale right now.</p>
             }
         </section>
+
+        @* What each plan includes, explained once rather than on every card *@
+        @if (Compared.Count > 1)
+        {
+            <section class="compare" aria-labelledby="compare-heading">
+                <h2 id="compare-heading" class="section-heading">What each plan includes</h2>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <td></td>
+                                @foreach (var plan in Compared)
+                                {
+                                    <th scope="col">@plan.Name</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <th scope="row">Storage<span class="explain">For your photos, videos, chat and files</span></th>
+                                @foreach (var plan in Compared)
+                                {
+                                    <td>@plan.Storage</td>
+                                }
+                            </tr>
+                            <tr>
+                                <th scope="row">A public home page<span class="explain">A page at your domain that anyone can visit, without signing in</span></th>
+                                @foreach (var plan in Compared)
+                                {
+                                    <td><Mark Has="plan.PublicWebPresence" /></td>
+                                }
+                            </tr>
+                            <tr>
+                                <th scope="row">A public email address<span class="explain">An address at your own domain that anyone can write to</span></th>
+                                @foreach (var plan in Compared)
+                                {
+                                    <td><Mark Has="plan.PublicEmail" /></td>
+                                }
+                            </tr>
+                            <tr>
+                                <th scope="row">Email aliases<span class="explain">More addresses at your domain, all arriving in the same inbox</span></th>
+                                @foreach (var plan in Compared)
+                                {
+                                    <td>@if (plan.EmailAliases > 0)
+                                        {
+                                            @plan.EmailAliases
+                                        }
+                                        else
+                                        {
+                                            <Mark Has="false" />
+                                        }</td>
+                                }
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        }
+
+        <section class="faq" aria-labelledby="faq-heading">
+            <h2 id="faq-heading" class="section-heading">Questions</h2>
+            <dl>
+                <dt>What is Homebase?</dt>
+                <dd>An identity of your own on the internet: your own domain, with your photos, chat and feed in it, encrypted so only you can read them. <a href="https://homebase.id">More at homebase.id</a>.</dd>
+                <dt>Where are my things kept?</dt>
+                <dd>In the region you choose when you create your identity: Europe or North America.</dd>
+                <dt>What if I run out of room?</dt>
+                <dd>Nothing is deleted. New uploads wait until there is room again; move to a bigger plan whenever you like.</dd>
+                <dt>What happens when a paid plan ends?</dt>
+                <dd>You keep it for 14 days, then go back to Free. Your files stay; if you keep more than Free allows, new uploads wait for room.</dd>
+                <dt>Can I buy a plan today?</dt>
+                <dd>Not yet for everyone: buying opens soon. Until then, everyone can start on Free.</dd>
+                <dt>Something here breaks the rules?</dt>
+                <dd>Tell us on the <a href="/report">report page</a>.</dd>
+            </dl>
+        </section>
+
+        @* The close: the one thing to do, again *@
+        <section class="closing" aria-labelledby="closing-heading">
+            <h2 id="closing-heading">@(Identity == null ? $"Start free with {Free?.Storage ?? "5 GB"}" : "Need more room?")</h2>
+            <p>@(Identity == null ? "Create your Homebase identity in a minute, and move to a bigger plan when you need the room." : "Choose a bigger plan above whenever you need it.")</p>
+            @if (Identity == null)
+            {
+                <a class="button" href="@SitePages.DefaultSignupUrl" data-signup>Create a free identity</a>
+            }
+        </section>
     </ChildContent>
 </SitePage>
 
@@ -83,6 +171,9 @@
     [Parameter] public List<Plan> Plans { get; set; } = [];
 
     private Plan? Recommended => PlanRecommendation.For(Plans, Now);
+
+    // Every plan shown above, the free one first, side by side in the table
+    private List<Plan> Compared => (Free == null ? Plans : Plans.Prepend(Free)).ToList();
 
     private readonly RenderFragment FreeAction = @<a class="button" href="@SitePages.DefaultSignupUrl" data-signup>Create a free identity</a>;
 }

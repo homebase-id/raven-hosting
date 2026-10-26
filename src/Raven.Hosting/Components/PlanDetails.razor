@@ -9,11 +9,11 @@
     {
         <li class="has">@Plan.Storage of storage</li>
     }
-    <Feature Has="Plan.PublicWebPresence" Name="A public home page"
+    <Feature ShowExplain="ShowExplain" Has="Plan.PublicWebPresence" Name="A public home page"
              Explain="A page at your domain that anyone can visit, without signing in" />
-    <Feature Has="Plan.PublicEmail" Name="A public email address"
+    <Feature ShowExplain="ShowExplain" Has="Plan.PublicEmail" Name="A public email address"
              Explain="An address at your own domain that anyone can write to" />
-    <Feature Has="Plan.EmailAliases > 0" Name="@Aliases"
+    <Feature ShowExplain="ShowExplain" Has="Plan.EmailAliases > 0" Name="@Aliases"
              Explain="More addresses at your domain, all arriving in the same inbox" />
 </ul>
 @if (ShowPrices && Plan.Prices.Count > 0)
@@ -29,6 +29,9 @@
 @code {
     [Parameter, EditorRequired] public Plan Plan { get; set; } = null!;
     [Parameter] public bool ShowDescription { get; set; } = true;
+
+    /// <summary>Whether each feature says what it is, under it</summary>
+    [Parameter] public bool ShowExplain { get; set; } = true;
     [Parameter] public bool ShowStorage { get; set; } = true;
     [Parameter] public bool ShowPrices { get; set; } = true;
 

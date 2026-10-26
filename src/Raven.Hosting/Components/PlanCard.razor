@@ -2,9 +2,10 @@
    description, what it gives, prices, then the choice), so on a desktop they line up across plans *@
 <li class="@Classes">
     <p class="storage">@Plan.Storage</p>
-    <h2>@Plan.Name</h2>
+    @* The name, unless it only repeats the storage figure above it: then for screen readers only *@
+    <h2 class="@(Plan.Name == Plan.Storage ? "visually-hidden" : null)">@Plan.Name</h2>
     <p class="description">@Plan.Description</p>
-    <PlanDetails Plan="Plan" ShowDescription="false" ShowStorage="false" ShowPrices="false" />
+    <PlanDetails Plan="Plan" ShowDescription="false" ShowStorage="false" ShowPrices="false" ShowExplain="false" />
     <ul class="prices">
         @if (Plan.Prices.Count == 0 && IsFree)
         {
