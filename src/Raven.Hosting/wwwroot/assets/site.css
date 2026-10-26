@@ -1,48 +1,58 @@
 /*
- * Raven Hosting, in Homebase's look (homebase.id): Montserrat, Montserrat Alternates headings, the green, slate and
- * purple gradient, purple and teal pill buttons. The fonts are served from here; nothing loads from anyone else.
+ * Raven Hosting, "Ember Glow" (light theme). Calm, light and airy: about 80% neutrals, 15% Night and Ink text, 5%
+ * ember. Off-white pages, white cards with hairline borders and very soft shadows; Sora headings (H1 and H2 in Ember
+ * Deep, H3 and below in Night), Inter text in Ink. Ember Deep for the primary button, links, key numbers and active
+ * states; Ember itself only for icons, the focus ring, badges and the recommended plan's border, never as small text.
+ * The gradient appears once a screen at most: the app-icon tile in the hero. The footer is the one dark area: Night,
+ * with Cream text. The fonts are served from here; nothing loads from anyone else.
+ *
+ * Contrast (WCAG 2.2 AA) on Off-white: Night 16.6:1, Ink 12:1, Muted 5.5:1, Ember Deep 5.2:1 (and 5.5:1 under white
+ * on buttons). Status colours (success, warning, error) always come with an icon and a label.
  */
 
 @font-face {
-  font-family: Montserrat;
-  src: url("fonts/Montserrat-VariableFont_wght.ttf") format("truetype");
+  font-family: Sora;
+  src: url("fonts/Sora-VariableFont_wght.ttf") format("truetype");
+  font-weight: 100 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: Inter;
+  src: url("fonts/Inter-VariableFont.ttf") format("truetype");
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
 }
 
-@font-face {
-  font-family: "Montserrat Alternates";
-  src: url("fonts/MontserratAlternates-SemiBold.ttf") format("truetype");
-  font-weight: 600;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Montserrat Alternates";
-  src: url("fonts/MontserratAlternates-Bold.ttf") format("truetype");
-  font-weight: 700;
-  font-display: swap;
-}
-
 :root {
-  --purple: #603e90;
-  --purple-tint: #f3eff8;
-  --teal: #2e7b85;
-  --green: #00966d;
-  --green-tint: #e3f4ee;
-  --slate: #486a92;
-  --ink: #1f2937;
-  --muted: #6b7280;
-  --line: #e5e7eb;
+  /* Neutrals: most of every page */
+  --page: #faf7f3;
   --paper: #ffffff;
-  --page: #f8f8fb;
-  --gradient: linear-gradient(120deg, #00976e 0%, #486a92 48%, #603e91 100%);
+  --line: #e6ddd4;
+  --night: #2a0f1f;
+  --ink: #3b2f33;
+  --muted: #6e6266;
 
-  --heading: "Montserrat Alternates", Montserrat, sans-serif;
-  --body: Montserrat, system-ui, sans-serif;
+  /* Ember accents, only where the brand puts them */
+  --ember-deep: #b5432b;
+  --ember: #d2553a;
+  --wine: #7a1f3d;
+  --ember-tint: #f8e7de;
+  --cream: #fff1e4;
 
-  --radius: 0.375rem;
+  /* Status: kept apart from the brand */
+  --success: #17784f;
+  --warning: #9a6416;
+  --error: #d13438;
+
+  --heading: Sora, system-ui, sans-serif;
+  --body: Inter, system-ui, sans-serif;
+
+  --radius: 10px;
+  --radius-card: 16px;
+  --shadow: 0 1px 2px rgb(42 15 31 / 0.06), 0 8px 24px rgb(42 15 31 / 0.06);
+  --ease: 250ms ease-out;
   --measure: 46rem;
 }
 
@@ -59,117 +69,50 @@ body {
   margin: 0;
   background: var(--page);
   color: var(--ink);
-  font: 400 1rem / 1.6 var(--body);
+  font: 400 1.0625rem / 1.6 var(--body);
   -webkit-font-smoothing: antialiased;
 }
 
 .frame {
+  width: 100%;
   max-width: var(--measure);
   margin: 0 auto;
   padding: 0 1.25rem;
 }
 
-/* The header: Homebase's gradient, white type */
-
-.site-header {
-  background: var(--gradient);
-  color: #fff;
-  padding: 1.5rem 0 2.25rem;
+.frame.wide {
+  max-width: 76rem;
 }
 
-.site-header.lead {
-  padding-bottom: 3.5rem;
+/* Ember sparingly: a plan card's button is white with a hairline, filled only on the plan recommended */
+.plans .card:not(.recommended) .choice .button {
+  border-color: var(--line);
+  background: var(--paper);
+  color: var(--night);
 }
 
-/* The name on the left; who is signed in, or "Sign in", on the right */
-.topbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem 1.5rem;
-  margin-bottom: 2rem;
+.plans .card:not(.recommended) .choice .button:hover {
+  border-color: var(--ember);
+  background: var(--paper);
+  color: var(--night);
 }
 
-.wordmark {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-  color: #fff;
-  font: 700 1.25rem / 1 var(--heading);
-  text-decoration: none;
-}
+/* Type: 48 / 36 / 24 / 20 / 16 / 14. H1 and H2 in Ember Deep; H3 and below in Night */
 
-.wordmark img {
-  width: 1.75rem;
-  height: 1.75rem;
-}
-
-.account {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  font-size: 0.9rem;
-}
-
-.account form {
-  margin: 0;
-}
-
-.account .avatar {
-  flex: none;
-  width: 2rem;
-  height: 2rem;
-  border: 2px solid rgb(255 255 255 / 0.7);
-  border-radius: 50%;
-  object-fit: cover;
-  background: rgb(255 255 255 / 0.2);
-}
-
-/* The name over the identity; the identity alone, as bold, when there is no name */
-.account .who-am-i {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.25;
-  min-width: 0;
-}
-
-.account .name {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.account .identity {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.account .name + .identity {
-  font-size: 0.8rem;
-  font-weight: 400;
-  opacity: 0.85;
-}
-
-.account .button,
-.account button {
-  padding: 0.5rem 1.1rem;
-  font-size: 0.9rem;
-}
-
-.intro {
-  max-width: 38rem;
-  font-size: 1.15rem;
-  line-height: 1.55;
-  color: rgb(255 255 255 / 0.92);
-}
-
-.site-header .actions {
-  margin-top: 1.75rem;
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--heading);
+  letter-spacing: -0.01em;
 }
 
 h1 {
-  margin: 0 0 1.25rem;
-  font: 700 2.25rem / 1.15 var(--heading);
+  margin: 0 0 1rem;
+  color: var(--ember-deep);
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1.15;
 }
 
 @media (min-width: 48rem) {
@@ -180,7 +123,19 @@ h1 {
 
 h2 {
   margin: 0 0 0.35rem;
-  font: 700 1.3rem / 1.25 var(--heading);
+  color: var(--ember-deep);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+h3,
+h4 {
+  margin: 0 0 0.35rem;
+  color: var(--night);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 p {
@@ -188,15 +143,175 @@ p {
 }
 
 a {
-  color: var(--teal);
+  color: var(--ember-deep);
   text-underline-offset: 0.15em;
+  transition: color var(--ease);
+}
+
+a:hover {
+  color: var(--wine);
+}
+
+strong {
+  color: var(--night);
 }
 
 .muted {
   color: var(--muted);
 }
 
-/* The four steps, a real sequence */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The header: light, on the page's own ground, with a hairline under it */
+
+.site-header {
+  border-bottom: 1px solid var(--line);
+  padding: 1.25rem 0 2.25rem;
+}
+
+.site-header.lead {
+  padding-bottom: 3.5rem;
+}
+
+/* The mark and the name on the left; who is signed in, or "Sign in", on the right */
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 2.25rem;
+}
+
+/* The mark, with clear space of at least half its height, then the name in Night */
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1rem 1rem 0;
+  margin: -1rem 0;
+  color: var(--night);
+  font: 600 1.25rem / 1 var(--heading);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.wordmark:hover {
+  color: var(--night);
+}
+
+/* The mark's own artwork sits inside generous padding, so the file is set larger than the type */
+.wordmark img {
+  width: 3rem;
+  height: 3rem;
+  margin: -0.5rem -0.25rem;
+}
+
+.account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.account form {
+  margin: 0;
+}
+
+.account .avatar {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--paper);
+}
+
+/* The name over the identity; the identity alone, as bold, when there is no name */
+.account .who-am-i {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.account .name,
+.account .identity {
+  color: var(--night);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.account .name + .identity {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* At least 44px tall, so they are easy to tap */
+.account .button,
+.account button {
+  min-height: 2.75rem;
+  padding: 0.65rem 1.1rem;
+  font-size: 0.875rem;
+}
+
+/* The home page's introduction, beside the app-icon tile: the one gradient on the screen */
+.intro {
+  max-width: 38rem;
+  color: var(--ink);
+  font-size: 1.25rem;
+  line-height: 1.6;
+}
+
+.site-header.lead .frame {
+  position: relative;
+}
+
+.hero-mark {
+  display: none;
+}
+
+@media (min-width: 60rem) {
+  .site-header.lead .frame {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    column-gap: 3rem;
+  }
+
+  .site-header.lead .frame > * {
+    grid-column: 1;
+  }
+
+  .site-header.lead .frame > .topbar {
+    grid-column: 1 / -1;
+  }
+
+  .hero-mark {
+    display: block;
+    grid-column: 2 !important;
+    grid-row: 2 / span 3;
+    align-self: center;
+    width: 12rem;
+    height: 12rem;
+    border-radius: 22%;
+    box-shadow: var(--shadow);
+  }
+}
+
+.site-header .actions {
+  margin-top: 1.75rem;
+}
+
+/* The four upgrade steps, a real sequence: numbered circles, done in ember, the current one filled */
 
 .steps {
   display: flex;
@@ -206,8 +321,8 @@ a {
   padding: 0;
   list-style: none;
   counter-reset: step;
+  color: var(--muted);
   font-size: 0.875rem;
-  color: rgb(255 255 255 / 0.75);
 }
 
 .steps li {
@@ -218,58 +333,89 @@ a {
   content: counter(step);
   display: inline-grid;
   place-items: center;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.6rem;
+  height: 1.6rem;
   margin-right: 0.45rem;
-  border: 1px solid rgb(255 255 255 / 0.6);
+  border: 1px solid var(--line);
   border-radius: 50%;
+  background: var(--paper);
   font-weight: 600;
 }
 
 .steps li.done {
-  color: #fff;
+  color: var(--ink);
+}
+
+.steps li.done::before {
+  border-color: var(--ember);
+  color: var(--ember-deep);
 }
 
 .steps li[aria-current] {
-  color: #fff;
+  color: var(--night);
   font-weight: 700;
 }
 
 .steps li[aria-current]::before {
-  background: #fff;
-  border-color: #fff;
-  color: var(--purple);
+  border-color: var(--ember-deep);
+  background: var(--ember-deep);
+  color: #fff;
 }
 
 /* main.frame, not main: .frame's own padding would otherwise win */
 main.frame {
   flex: 1;
-  width: 100%;
-  padding-top: 2rem;
-  padding-bottom: 4rem;
+  padding-top: 2.5rem;
+  padding-bottom: 5rem;
 }
 
 .section-heading {
   margin-bottom: 0.5rem;
-  font-size: 1.6rem;
+  font-size: 1.75rem;
 }
 
-/* The footer: the terms, the privacy policy, reporting */
+@media (min-width: 48rem) {
+  .section-heading {
+    font-size: 2.25rem;
+  }
+}
+
+/* The footer: the one dark area. Night, Cream text, the cream mark */
 
 .site-footer {
-  border-top: 1px solid var(--line);
-  padding: 1.5rem 0 2.5rem;
+  padding: 2.5rem 0 3rem;
+  background: var(--night);
+  color: var(--cream);
   font-size: 0.875rem;
 }
 
 .site-footer .frame {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem 1.5rem;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
 }
 
-.site-footer a {
-  color: var(--muted);
+.site-footer .wordmark {
+  margin-right: auto;
+  color: var(--cream);
+}
+
+.site-footer .wordmark img {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+.site-footer a:not(.wordmark) {
+  color: var(--cream);
+}
+
+.site-footer a:not(.wordmark):hover {
+  color: #ffd5c4;
+}
+
+.site-footer :focus-visible {
+  outline-color: var(--cream);
 }
 
 /* Long text: the terms and the privacy policy */
@@ -280,12 +426,12 @@ main.frame {
 }
 
 .prose h2 {
-  margin: 2rem 0 0.5rem;
+  margin: 2.25rem 0 0.5rem;
 }
 
 .prose h3 {
   margin: 1.25rem 0 0.35rem;
-  font: 600 1.05rem / 1.3 var(--body);
+  font-size: 1.0625rem;
 }
 
 .prose ul {
@@ -297,23 +443,20 @@ main.frame {
   margin-bottom: 0.35rem;
 }
 
-/* Panels */
+/* Cards: white on the off-white, a hairline and a very soft shadow */
 
 .card {
   margin: 0 0 1rem;
   padding: 1.5rem;
   background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
 }
 
 .who {
   margin-bottom: 1.5rem;
   color: var(--muted);
-}
-
-.who strong {
-  color: var(--ink);
 }
 
 /*
@@ -348,6 +491,11 @@ main.frame {
   display: none;
 }
 
+.plans .card h2 {
+  color: var(--night);
+  font-size: 1.25rem;
+}
+
 /* The last part: how it compares with what the owner has now, then the button or "Your plan" */
 .choice .badge {
   margin: 0;
@@ -356,59 +504,44 @@ main.frame {
 .fit {
   margin: 0 0 0.6rem;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 600;
 }
 
 .fit.more {
-  color: var(--green);
+  color: var(--ember-deep);
 }
 
 .plans .card.current {
-  border: 2px solid var(--purple);
-  background: var(--purple-tint);
+  border: 2px solid var(--ember-deep);
+  background: var(--ember-tint);
 }
 
-/* The plan to suggest: outlined in green, labelled on its top edge, outside the card's parts so they stay lined up */
+/* The plan to suggest: an Ember border and its badge on the top edge, outside the card's parts so they stay lined up */
 .plans .card.recommended {
   position: relative;
-  border: 2px solid var(--green);
-  box-shadow: 0 0.5rem 1.5rem rgb(0 150 109 / 0.12);
+  border: 2px solid var(--ember);
 }
 
 .plans .card.recommended::before {
   content: "Recommended";
   position: absolute;
-  top: -0.75rem;
+  top: -0.8rem;
   left: 1.25rem;
   padding: 0.15rem 0.7rem;
   border-radius: 999px;
-  background: var(--green);
-  color: #fff;
-  font-size: 0.8rem;
+  background: var(--ember-tint);
+  color: var(--ember-deep);
+  font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.2rem;
-}
-
-.plans .card.recommended .choice .button {
-  border-color: var(--green);
-  background: var(--green);
-}
-
-.plans .card.recommended .choice .button:hover {
-  border-color: #007a59;
-  background: #007a59;
-}
-
-.frame.wide {
-  max-width: 76rem;
 }
 
 @media (min-width: 64rem) {
   .plans {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-    gap: 1rem;
+    gap: 1.25rem;
   }
 
   .plans .card {
@@ -437,19 +570,22 @@ main.frame {
 
   /* "Your plan" as big as the buttons beside it, so the row stays level; outlined, as it is not one */
   .choice .badge {
-    padding: calc(0.8rem - 1px) 1.5rem;
-    border: 2px solid var(--purple);
-    background: transparent;
-    color: var(--purple);
+    padding: calc(0.75rem - 1px) 1.4rem;
+    border: 1px solid var(--ember-deep);
+    border-radius: var(--radius);
+    background: var(--paper);
+    color: var(--ember-deep);
     font-size: 1rem;
     line-height: 1.2;
   }
 }
 
+/* The storage figure: a key number, in Ember Deep */
 .storage {
   margin: 0;
-  color: var(--purple);
-  font: 700 2.5rem / 1 var(--heading);
+  color: var(--ember-deep);
+  font: 700 2.25rem / 1 var(--heading);
+  letter-spacing: -0.02em;
   white-space: nowrap;
 }
 
@@ -458,9 +594,9 @@ main.frame {
   margin: 0 0 0.5rem;
   padding: 0.15rem 0.7rem;
   border-radius: 999px;
-  background: var(--purple);
-  color: #fff;
-  font-size: 0.8rem;
+  background: var(--ember-tint);
+  color: var(--ember-deep);
+  font-size: 0.8125rem;
   font-weight: 600;
 }
 
@@ -489,15 +625,19 @@ main.frame {
   color: var(--muted);
 }
 
-/* Ticked when the plan has it, with what it is under it; dashed and faded when it does not */
+/* Ticked in Ember when the plan has it; a muted dash when it does not, still at full contrast */
 .gives .has,
 .gives .lacks {
   position: relative;
-  padding: 0.1rem 0 0.1rem 1.4rem;
+  padding: 0.1rem 0 0.1rem 1.5rem;
 }
 
 .gives .has {
   color: var(--ink);
+}
+
+.gives .lacks {
+  color: var(--muted);
 }
 
 .gives .has::before,
@@ -509,11 +649,7 @@ main.frame {
 
 .gives .has::before {
   content: "✓";
-  color: var(--green);
-}
-
-.gives .lacks {
-  opacity: 0.55;
+  color: var(--ember);
 }
 
 .gives .lacks::before {
@@ -523,23 +659,15 @@ main.frame {
 .explain {
   display: block;
   color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.4;
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
+  font-size: 0.875rem;
+  line-height: 1.45;
 }
 
 .prices {
   margin: 0.5rem 0 1rem;
   padding: 0;
   list-style: none;
+  color: var(--night);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -549,8 +677,9 @@ main.frame {
 }
 
 .price {
+  color: var(--night);
   font-weight: 700;
-  font-size: 1.15rem;
+  font-size: 1.25rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -558,14 +687,14 @@ main.frame {
   margin-left: 0.45rem;
   padding: 0.1rem 0.55rem;
   border-radius: 999px;
-  background: var(--green-tint);
-  color: var(--green);
-  font-size: 0.8rem;
+  background: var(--ember-tint);
+  color: var(--ember-deep);
+  font-size: 0.8125rem;
   font-weight: 700;
   white-space: nowrap;
 }
 
-/* How to pay */
+/* How to pay: each term a white choice; the chosen one in Ember Tint with an Ember Deep border */
 
 .terms fieldset {
   margin: 0;
@@ -575,7 +704,9 @@ main.frame {
 
 .terms legend {
   margin-bottom: 0.75rem;
-  font: 700 1.3rem / 1.25 var(--heading);
+  color: var(--ember-deep);
+  font: 600 1.5rem / 1.25 var(--heading);
+  letter-spacing: -0.01em;
 }
 
 .terms label {
@@ -586,30 +717,68 @@ main.frame {
   padding: 0.85rem 1rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--night);
   font-weight: 600;
   cursor: pointer;
   font-variant-numeric: tabular-nums;
+  transition: border-color var(--ease), background-color var(--ease);
 }
 
 .terms label:has(input:checked) {
-  border-color: var(--purple);
-  background: var(--purple-tint);
+  border-color: var(--ember-deep);
+  background: var(--ember-tint);
 }
 
 .terms input {
-  accent-color: var(--purple);
+  accent-color: var(--ember-deep);
+}
+
+/* Notes and problems: a status colour on the edge and in the icon, with the words in Ink */
+
+.banner,
+.problem {
+  position: relative;
+  margin: 0 0 1rem;
+  padding: 0.85rem 1.1rem 0.85rem 2.9rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.problem {
+  border-left-color: var(--error);
+  font-weight: 500;
+}
+
+.banner::before,
+.problem::before {
+  position: absolute;
+  top: 0.95rem;
+  left: 1rem;
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  color: #fff;
+  font: 700 0.8rem / 1 var(--body);
+}
+
+.banner::before {
+  content: "!";
+  background: var(--warning);
+}
+
+.problem::before {
+  content: "×";
+  background: var(--error);
+  font-size: 1rem;
 }
 
 /* Forms: sign-in, the report, the test checkout */
-
-.banner {
-  margin: 0 0 1rem;
-  padding: 0.85rem 1.1rem;
-  border: 1px solid #f1d38a;
-  border-radius: var(--radius);
-  background: #fff7e0;
-  color: #6b4d00;
-}
 
 .checkout label,
 .form label,
@@ -623,23 +792,32 @@ main.frame {
 
 .checkout input,
 .form input,
+.form select,
 .form textarea,
 .sign-in input {
   display: block;
   width: 100%;
-  margin-top: 0.3rem;
+  margin-top: 0.35rem;
   padding: 0.7rem 0.85rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--paper);
-  color: var(--ink);
+  color: var(--night);
   font: inherit;
   font-size: 1rem;
+  transition: border-color var(--ease);
+}
+
+.checkout input:hover,
+.form input:hover,
+.form textarea:hover,
+.sign-in input:hover {
+  border-color: var(--muted);
 }
 
 .form label,
 .sign-in label {
-  color: var(--ink);
+  color: var(--night);
   font-size: 1rem;
   font-weight: 600;
 }
@@ -655,21 +833,14 @@ main.frame {
   font-weight: 400;
 }
 
-.problem {
-  padding: 0.7rem 0.9rem;
-  border-left: 3px solid #b42318;
-  background: #fef3f2;
-  color: #912018;
-  font-weight: 500;
-}
-
 .checkout .row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
 }
 
-/* Pill buttons, as on homebase.id */
+/* Buttons: 10px corners. Ember Deep under white for the main thing, Wine on hover and press; white with a hairline
+   for the rest */
 
 .actions {
   display: flex;
@@ -682,20 +853,38 @@ main.frame {
 button,
 .button {
   display: inline-block;
-  padding: 0.8rem 1.5rem;
-  border: 1px solid var(--purple);
-  border-radius: 999px;
-  background: var(--purple);
+  min-height: 2.75rem;
+  padding: 0.75rem 1.4rem;
+  border: 1px solid var(--ember-deep);
+  border-radius: var(--radius);
+  background: var(--ember-deep);
   color: #fff;
   font: 600 1rem / 1.2 var(--body);
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 0.15s, border-color 0.15s;
+  transition: background-color var(--ease), border-color var(--ease), color var(--ease);
 }
 
 button:hover,
-.button:hover {
-  background: rgb(96 62 144 / 0.85);
+.button:hover,
+button:active,
+.button:active {
+  border-color: var(--wine);
+  background: var(--wine);
+  color: #fff;
+}
+
+.button.secondary {
+  border-color: var(--line);
+  background: var(--paper);
+  color: var(--night);
+}
+
+.button.secondary:hover,
+.button.secondary:active {
+  border-color: var(--ember);
+  background: var(--paper);
+  color: var(--night);
 }
 
 button.secondary,
@@ -707,42 +896,17 @@ button:disabled:hover {
   cursor: not-allowed;
 }
 
-.button.secondary {
-  background: transparent;
+/* A form's own secondary button is a real one, not a disabled one */
+button.button.secondary {
   border-color: var(--line);
-  color: var(--ink);
+  background: var(--paper);
+  color: var(--night);
+  cursor: pointer;
 }
 
-button.secondary:hover,
-.button.secondary:hover {
-  border-color: var(--muted);
-}
-
-/* On the gradient: white, solid for the main thing, outlined for the rest */
-.button.light {
-  background: #fff;
-  border-color: #fff;
-  color: var(--purple);
-}
-
-.button.light:hover {
-  background: rgb(255 255 255 / 0.88);
-}
-
-button.on-dark,
-.button.on-dark {
-  background: transparent;
-  border-color: rgb(255 255 255 / 0.7);
-  color: #fff;
-}
-
-button.on-dark:hover,
-.button.on-dark:hover {
-  background: rgb(255 255 255 / 0.12);
-}
-
+/* Visible focus on everything that takes it: 2px Ember with a 2px offset */
 :focus-visible {
-  outline: 3px solid var(--teal);
+  outline: 2px solid var(--ember);
   outline-offset: 2px;
 }
 
@@ -750,11 +914,6 @@ button.on-dark:hover,
   * {
     transition: none !important;
   }
-}
-
-/* Teal does not show on the gradient */
-.site-header :focus-visible {
-  outline-color: #fff;
 }
 
 /* What the owner has now, as their host says */
@@ -770,6 +929,7 @@ button.on-dark:hover,
 
 .usage {
   margin-bottom: 0.5rem;
+  color: var(--night);
   font-weight: 600;
 }
 
@@ -784,11 +944,118 @@ button.on-dark:hover,
 .meter span {
   display: block;
   height: 100%;
-  background: var(--purple);
+  background: var(--ember-deep);
 }
 
 .meter span.full {
-  background: #b42318;
+  background: var(--error);
+}
+
+/* The home page below the plans: what each plan includes, the questions, and the close */
+
+.compare,
+.faq {
+  margin-top: 4.5rem;
+}
+
+/* The table scrolls sideways on its own on a narrow screen; the page never does */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.compare table {
+  width: 100%;
+  min-width: 36rem;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare th,
+.compare td {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  text-align: center;
+  vertical-align: top;
+}
+
+.compare tbody tr:last-child th,
+.compare tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.compare thead th {
+  color: var(--night);
+  font: 600 1.0625rem / 1.2 var(--heading);
+}
+
+.compare tbody th {
+  width: 40%;
+  color: var(--night);
+  font-weight: 600;
+  text-align: left;
+}
+
+.mark-yes {
+  color: var(--ember);
+  font-weight: 700;
+}
+
+.mark-no {
+  color: var(--muted);
+}
+
+.faq dl {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) 2fr;
+  gap: 1rem 2rem;
+  margin: 1rem 0 0;
+}
+
+.faq dt {
+  color: var(--night);
+  font-weight: 600;
+}
+
+.faq dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+@media (max-width: 40rem) {
+  .faq dl {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .faq dd {
+    margin-bottom: 1rem;
+  }
+}
+
+/* The close: a soft Ember Tint callout with the one action */
+.closing {
+  margin-top: 4.5rem;
+  padding: 2.5rem 2rem;
+  border-radius: var(--radius-card);
+  background: var(--ember-tint);
+}
+
+.closing h2 {
+  margin-bottom: 0.5rem;
+}
+
+.closing p {
+  max-width: 34rem;
+  color: var(--night);
+}
+
+.closing .button {
+  margin-top: 0.75rem;
 }
 
 /* Your plan (/account) and join links: what someone pays for, the people on it and their shares, its invoices */

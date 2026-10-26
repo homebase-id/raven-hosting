@@ -1,5 +1,5 @@
-@* Every page: Homebase's gradient header with the name, who is signed in, the page's title and (in the upgrade) the
-   steps, then the page, then the footer *@
+@* Every page, in the Ember Glow brand: a light header with the ember mark and the name in Night, who is signed in,
+   the page's title and (in the upgrade) the steps; then the page; then the Night footer with the cream mark *@
 @inject UpgradeSession Session
 @inject AdminStore Admins
 @inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
@@ -13,7 +13,14 @@
 {
     <meta name="description" content="@Description">
 }
-<link rel="icon" href="/assets/raven-logo.svg" type="image/svg+xml">
+@* The brand's icons (head-snippet.html), with the light theme's colour *@
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32x32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/favicon-16x16.png" type="image/png" sizes="16x16">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#FAF7F3">
 <link rel="stylesheet" href="@SiteAssets.Stylesheet">
 <script src="/assets/signup.js" defer></script>
 </head>
@@ -21,7 +28,7 @@
 <header class="@(Lead != null ? "site-header lead" : "site-header")">
     <div class="@FrameClass">
         <div class="topbar">
-            <a class="wordmark" href="/"><img src="/assets/raven-logo.svg" alt="" width="28" height="28">@SiteName</a>
+            <a class="wordmark" href="/"><img src="/assets/brand/mark-ember.svg" alt="" width="48" height="48">@SiteName</a>
             <div class="account">
                 @if (_signedIn != null)
                 {
@@ -37,16 +44,16 @@
                     <a class="button on-dark" href="@AccountPages.Root">Your plan</a>
                     @if (_isAdmin)
                     {
-                        <a class="button on-dark" href="@AdminPages.Root">Admin</a>
+                        <a class="button secondary" href="@AdminPages.Root">Admin</a>
                     }
                     <form method="post" action="@($"{UpgradePage.Root}/sign-out")">
                         <AntiforgeryField Token="_antiforgery!" />
-                        <button type="submit" class="on-dark">Sign out</button>
+                        <button type="submit" class="button secondary">Sign out</button>
                     </form>
                 }
                 else if (ShowSignIn)
                 {
-                    <a class="button on-dark" href="@SitePages.SignIn">Sign in</a>
+                    <a class="button secondary" href="@SitePages.SignIn">Sign in</a>
                 }
             </div>
         </div>
@@ -63,6 +70,7 @@
 </main>
 <footer class="site-footer">
     <div class="@FrameClass">
+        <a class="wordmark" href="/"><img src="/assets/brand/mark-cream.svg" alt="" width="28" height="28">@SiteName</a>
         <a href="/terms-and-conditions">Terms &amp; Conditions</a>
         <a href="/privacy-policy">Privacy Policy</a>
         <a href="/report">Report abuse</a>

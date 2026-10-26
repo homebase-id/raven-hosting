@@ -2,7 +2,10 @@
    not, saying so to a screen reader *@
 @if (Has)
 {
-    <li class="has">@Name<span class="explain">@Explain</span></li>
+    <li class="has">@Name@if (ShowExplain && Explain != "")
+        {
+            <span class="explain">@Explain</span>
+        }</li>
 }
 else
 {
@@ -13,4 +16,7 @@ else
     [Parameter] public bool Has { get; set; }
     [Parameter, EditorRequired] public string Name { get; set; } = "";
     [Parameter] public string Explain { get; set; } = "";
+
+    /// <summary>Whether what it is shows under it; plan cards leave it to the table that compares them</summary>
+    [Parameter] public bool ShowExplain { get; set; } = true;
 }
