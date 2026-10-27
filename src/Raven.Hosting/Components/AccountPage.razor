@@ -21,10 +21,12 @@
         </div>
     }
 
-    @if (Now != null)
-    {
-        <YourPlanNow Now="Now" PlanName="@(CurrentPlanName ?? "")" />
-    }
+    <div data-plan-now="@(PlanNowPending ? "pending" : "ready")">
+        @if (Now != null)
+        {
+            <YourPlanNow Now="Now" PlanName="@(CurrentPlanName ?? "")" />
+        }
+    </div>
 
     @if (Owned != null)
     {
@@ -265,6 +267,9 @@
 
     /// <summary>What they have now, as their host says; null when it cannot say just now</summary>
     [Parameter] public IdentityOnHost? Now { get; set; }
+
+    /// <summary>Whether Now is still to come: plan-now.js asks for it and swaps in what shows it</summary>
+    [Parameter] public bool PlanNowPending { get; set; }
     [Parameter] public string? CurrentPlanName { get; set; }
 
     /// <summary>The subscription they pay for; null when none</summary>

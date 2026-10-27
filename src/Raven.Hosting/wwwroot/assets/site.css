@@ -1452,3 +1452,8 @@ td .link-button {
     display: none;
   }
 }
+
+/* What the host says comes after the page (plan-now.js); its wrapper takes no part in the layout */
+[data-plan-now] {
+  display: contents;
+}

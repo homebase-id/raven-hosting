@@ -33,6 +33,7 @@
                 <p class="who">Prices are in US dollars.</p>
             }
 
+            <div data-plan-now="@(PlanNowPending ? "pending" : "ready")">
             @if (Now != null)
             {
                 <YourPlanNow Now="Now" PlanName="@(CurrentPlanName ?? "")" />
@@ -60,6 +61,7 @@
                     </PlanCard>
                 }
             </ul>
+            </div>
             @if (Plans.Count == 0)
             {
                 <p class="muted">There are no paid plans for sale right now.</p>
@@ -160,6 +162,9 @@
 
     /// <summary>What the owner has now, as their host says; null for a visitor, or when the host cannot say</summary>
     [Parameter] public IdentityOnHost? Now { get; set; }
+
+    /// <summary>Whether Now is still to come: plan-now.js asks for it and swaps in what shows it</summary>
+    [Parameter] public bool PlanNowPending { get; set; }
 
     /// <summary>The name of the owner's plan; null when it is not known</summary>
     [Parameter] public string? CurrentPlanName { get; set; }

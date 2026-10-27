@@ -35,14 +35,17 @@ public static class AccountPages
                 return Results.Redirect(SitePages.SignInThen(UpgradePage.NextAccount));
             }
 
-            // Their plan as their host says; the page shows without it if the host cannot say just now
-            var located = await UpgradePage.LocateAsync(context, signedIn, session, plans);
+            // Their plan as their host says, after the page (plan-now.js); the page shows without it if the host
+            // cannot say just now
+            var pending = !UpgradePage.WantsPlanNow(context);
+            var located = pending ? null : await UpgradePage.LocateAsync(context, signedIn, session, plans);
             var covering = await subscriptions.CoveringAsync(signedIn.Identity);
             return UpgradePage.Show<AccountPage>(new Dictionary<string, object?>
             {
                 ["Identity"] = signedIn.Identity,
-                ["Now"] = located.Now,
-                ["CurrentPlanName"] = (await planStore.GetAsync(located.PlanId))?.Name ?? located.PlanId,
+                ["PlanNowPending"] = pending,
+                ["Now"] = located?.Now,
+                ["CurrentPlanName"] = (await planStore.GetAsync(located?.PlanId))?.Name ?? located?.PlanId,
                 ["Owned"] = await subscriptions.OwnedByAsync(signedIn.Identity),
                 ["Covering"] = covering is { } c && c.View.Subscription.Owner != signedIn.Identity ? c.View : null,
                 ["Membership"] = covering is { } m && m.View.Subscription.Owner != signedIn.Identity ? m.Member : null,

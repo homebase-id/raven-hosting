@@ -426,7 +426,7 @@ public class UpgradePageTests
         return _server.YouAuthIdentity.Authorize(redirect.Headers.Location!.ToString());
     }
 
-    // Signs Frodo in, and returns the upgrade page
+    // Signs Frodo in, and returns the upgrade page with what the host says, as plan-now.js asks for it
     private async Task<string> SignInAsync(string? host = null)
     {
         var callback = await CallbackAfterConsentAsync(host);
@@ -434,7 +434,9 @@ public class UpgradePageTests
         Assert.That(signedIn.StatusCode, Is.EqualTo(HttpStatusCode.Redirect), await signedIn.Content.ReadAsStringAsync());
         Assert.That(signedIn.Headers.Location!.ToString(), Is.EqualTo("/upgrade"));
 
-        var page = await _browser.GetAsync("/upgrade");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/upgrade");
+        request.Headers.Add(UpgradePage.PlanNowHeader, "1");
+        var page = await _browser.SendAsync(request);
         var html = await page.Content.ReadAsStringAsync();
         Assert.That(page.StatusCode, Is.EqualTo(HttpStatusCode.OK), html);
         return html;
