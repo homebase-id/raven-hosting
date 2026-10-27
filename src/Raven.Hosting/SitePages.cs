@@ -50,11 +50,16 @@ public static class SitePages
                 ["Plans"] = all.Where(UpgradePage.IsForSale).ToList(),
             };
 
-            // Someone signed in sees their plan; if their host cannot say just now, the page shows without it
+            // Someone signed in sees their plan, after the page (plan-now.js); if their host cannot say just now, the
+            // page shows without it
             var signedIn = session.Read(context);
             if (signedIn != null)
             {
                 parameters["Identity"] = signedIn.Identity;
+                parameters["PlanNowPending"] = !UpgradePage.WantsPlanNow(context);
+            }
+            if (signedIn != null && UpgradePage.WantsPlanNow(context))
+            {
                 var located = await UpgradePage.LocateAsync(context, signedIn, session, plans);
                 if (located.Error == null)
                 {
