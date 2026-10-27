@@ -180,14 +180,34 @@ strong {
   padding-bottom: 3.5rem;
 }
 
-/* The mark and the name on the left; who is signed in, or "Sign in", on the right */
+/* The mark and the name, then the site's links, on the left; the account at the right edge */
 .topbar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem 1.5rem;
+  gap: 0.75rem 2rem;
   margin-bottom: 2.25rem;
+}
+
+.site-nav {
+  display: flex;
+  gap: 0.25rem 1.5rem;
+  margin-right: auto;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.site-nav a {
+  padding: 0.5rem 0;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.site-nav a:hover,
+.site-nav a[aria-current="page"] {
+  color: var(--ember-deep);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.4em;
 }
 
 /* The mark, with clear space of at least half its height, then the name in Night */
@@ -226,20 +246,138 @@ strong {
   margin: 0;
 }
 
+/* The initial shows until the picture loads, and stays if the identity has none */
+.avatar-frame {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--ember-tint);
+  color: var(--ember-deep);
+  font: 600 1rem / 1 var(--heading);
+}
+
+.avatar-frame .avatar {
+  position: absolute;
+  inset: 0;
+}
+
 .account .avatar {
   flex: none;
   width: 2.25rem;
   height: 2.25rem;
+  margin: 0;
   border: 1px solid var(--line);
   border-radius: 50%;
   object-fit: cover;
   background: var(--paper);
 }
 
+/* The avatar and name; the menu opens under it, from the right edge */
+.account-menu {
+  position: relative;
+}
+
+.account-menu summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.75rem;
+  padding: 0.25rem 0.5rem 0.25rem 0.25rem;
+  border-radius: 999px;
+  color: var(--night);
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.account-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+/* A chevron, turned up while the menu is open */
+.account-menu summary::after {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  margin: 0 0.25rem 0.2rem 0;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  transition: transform var(--ease);
+}
+
+.account-menu[open] summary::after {
+  margin-bottom: -0.2rem;
+  transform: rotate(-135deg);
+}
+
+.account-menu summary:hover,
+.account-menu[open] summary {
+  background: var(--ember-tint);
+}
+
+.summary-name {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 15rem;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.menu-panel a,
+.account .menu-panel button {
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.7rem 0.75rem;
+  border: 0;
+  border-radius: calc(var(--radius) - 4px);
+  background: none;
+  color: var(--ink);
+  font: 500 0.9375rem / 1.2 var(--body);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.menu-panel a:hover,
+.account .menu-panel button:hover {
+  background: var(--ember-tint);
+  color: var(--night);
+}
+
+.menu-panel form {
+  margin-top: 0.25rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--line);
+}
+
 /* The name over the identity; the identity alone, as bold, when there is no name */
 .account .who-am-i {
   display: flex;
   flex-direction: column;
+  margin: 0;
+  padding: 0.5rem 0.75rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0.25rem;
   line-height: 1.25;
   min-width: 0;
 }
@@ -272,7 +410,7 @@ strong {
   line-height: 1.6;
 }
 
-.site-header.lead .frame {
+.site-header.lead .frame:not(.topbar) {
   position: relative;
 }
 
@@ -281,24 +419,20 @@ strong {
 }
 
 @media (min-width: 60rem) {
-  .site-header.lead .frame {
+  .site-header.lead .frame:not(.topbar) {
     display: grid;
     grid-template-columns: 1fr auto;
     column-gap: 3rem;
   }
 
-  .site-header.lead .frame > * {
+  .site-header.lead .frame:not(.topbar) > * {
     grid-column: 1;
-  }
-
-  .site-header.lead .frame > .topbar {
-    grid-column: 1 / -1;
   }
 
   .hero-mark {
     display: block;
     grid-column: 2 !important;
-    grid-row: 2 / span 3;
+    grid-row: 1 / span 3;
     align-self: center;
     width: 12rem;
     height: 12rem;
@@ -1297,4 +1431,24 @@ td .link-button {
   background: var(--ember-tint);
   color: var(--night);
   font-weight: 500;
+}
+
+/* On a phone: the avatar alone, and the links on a row of their own under the bar */
+@media (max-width: 40rem) {
+  .topbar {
+    flex-wrap: wrap;
+  }
+
+  .site-nav {
+    order: 3;
+    width: 100%;
+  }
+
+  .account {
+    margin-left: auto;
+  }
+
+  .summary-name {
+    display: none;
+  }
 }
