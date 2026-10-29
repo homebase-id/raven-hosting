@@ -135,11 +135,13 @@ signup.MapPost("/validate", async (CodeRequest request) =>
 
 // The code comes back with what its plan gives now, which the identity host stores on the new identity. A code whose
 // plan is not here (made before plans were) carries its plan Id alone, and the host uses its defaults. A host that
-// says who is signing up (identity) starts their subscription here: a free one of the code's plan, with no end, set on
-// the host by the grant worker once the identity is there. Hosts that do not say leave it to the host alone.
+// says who is signing up (identity) has them kept on the use, for the channel pages, and starts their subscription
+// here: a free one of the code's plan, with no end, set on the host by the grant worker once the identity is there.
+// Hosts that do not say leave it to the host alone.
 signup.MapPost("/use", async (CodeRequest request, ILogger<Program> logger, TimeProvider time) =>
 {
-    var code = await store.TryUseAsync(request.Code);
+    var identity = DomainNames.Normalize(request.Identity);
+    var code = await store.TryUseAsync(request.Code, identity);
     if (code == null)
     {
         return new UseResponse(false, null);
@@ -152,7 +154,7 @@ signup.MapPost("/use", async (CodeRequest request, ILogger<Program> logger, Time
                           "gives its default quota (raven.sh plan-create)", code.Code, code.PlanId);
     }
 
-    if (plan != null && DomainNames.Normalize(request.Identity) is { } identity)
+    if (plan != null && identity != null)
     {
         // Never in the way of the signup: the use is taken whatever happens here
         try
