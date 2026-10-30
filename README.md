@@ -4,8 +4,8 @@ Raven Hosting's service for Homebase identities: invitation codes for signups, t
 the upgrade page where owners get a bigger plan, and the site around it at https://ravenhosting.cloud (the plans
 and their prices, the terms, the privacy policy and the report form).
 
-The identity hosts (odin-core) call it at signup to check a code and take a use; who signed up with a code
-is kept on the new identity's registration, not here. The hosts have no plans of their own (odin-core #1994):
+The identity hosts (odin-core) call it at signup to check a code and take a use; a host that says who is signing
+up has them kept on the use too, for the Channels pages. The hosts have no plans of their own (odin-core #1994):
 this service holds them, and sends what a plan gives whenever it gives one. Admins manage codes and plans with
 `raven.sh` or curl.
 
@@ -400,7 +400,8 @@ three groups:
   with **Mark paid** and a reference, **Extend**), add-ons, changing its plan, and its history. **Plans**, their seats
   and their prices.
 - **Marketing:** invitation codes (make, change, disable, take or give back a use as a signup would, copy the code
-  or its sign-up link); **Channels**, the code stats by source; **Renewals**, paid subscriptions running out in 7, 30
+  or its sign-up link); **Channels**, the code stats by source, each channel opening to who signed up with it, with which code, and
+  the subscription each has now; **Renewals**, paid subscriptions running out in 7, 30
   or 90 days or in their grace, with their owner, seats, auto-renew and any open invoice, and those moved back to
   free, with a CSV export; **Traffic**, the site's own page counts ([Traffic](#traffic)).
 - **Safety:** **Abuse reports**, filed on the site's `/report` page ("Report abuse").

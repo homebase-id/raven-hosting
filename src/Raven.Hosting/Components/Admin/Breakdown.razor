@@ -14,7 +14,16 @@
                     @foreach (var line in Lines)
                     {
                         <tr>
-                            <td class="break-words">@(line.Name ?? Empty)</td>
+                            <td class="break-words">
+                                @if (Href != null)
+                                {
+                                    <a class="link" href="@Href(line.Name)">@(string.IsNullOrEmpty(line.Name) ? Empty : line.Name)</a>
+                                }
+                                else
+                                {
+                                    @(line.Name ?? Empty)
+                                }
+                            </td>
                             <td class="text-right tabular-nums">@line.Codes</td>
                             <td class="text-right tabular-nums">@line.UsesAllowed</td>
                             <td class="text-right tabular-nums">@line.Signups</td>
@@ -33,4 +42,7 @@
 
     /// <summary>What a line without a name is called</summary>
     [Parameter] public string Empty { get; set; } = "";
+
+    /// <summary>Where a line's name links to, if anywhere</summary>
+    [Parameter] public Func<string?, string>? Href { get; set; }
 }

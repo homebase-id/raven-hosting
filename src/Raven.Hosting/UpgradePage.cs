@@ -187,6 +187,13 @@ public static class UpgradePage
                     return Results.Redirect(ConfirmUrl(chosen.Id));
                 }
 
+                // The plans show at once; what the host says comes after (plan-now.js)
+                var forSale = (await planStore.ListAsync()).Where(IsForSale).ToList();
+                if (!WantsPlanNow(context))
+                {
+                    return Show<ChoosePage>(new { PlanNowPending = true, Plans = forSale });
+                }
+
                 var located = await LocateAsync(context, signedIn with { Host = signedIn.Host ?? hint }, session, plans);
                 if (located.Error != null)
                 {
@@ -196,7 +203,7 @@ public static class UpgradePage
                 {
                     Now = located.Now,
                     CurrentPlanName = await PlanNameAsync(planStore, located.PlanId),
-                    Plans = (await planStore.ListAsync()).Where(IsForSale).ToList(),
+                    Plans = forSale,
                 });
             }
 
@@ -446,6 +453,14 @@ public static class UpgradePage
     {
         public string? PlanId => Now?.PlanId;
     }
+
+    /// <summary>
+    /// Sent by plan-now.js when it asks for a page again: the landing pages (/, /upgrade, /account) show first without
+    /// what the host says, which can take a while to ask, and answer this with it
+    /// </summary>
+    public const string PlanNowHeader = "X-Plan-Now";
+
+    internal static bool WantsPlanNow(HttpContext context) => context.Request.Headers.ContainsKey(PlanNowHeader);
 
     // Where the identity is and its plan, asked of its host; remembers the host in the session when it moved
     internal static async Task<Located> LocateAsync(HttpContext context, UpgradeSession.Data signedIn,

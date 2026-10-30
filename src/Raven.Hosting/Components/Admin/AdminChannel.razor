@@ -1,0 +1,117 @@
+@* One channel (a code source): who signed up with its codes, newest first, and the subscription each has now *@
+<AdminLayout Admin="Admin" Title="@(Channel == "" ? "(no channel)" : Channel)" Section="channels">
+    <Actions>
+        <a class="btn btn-secondary" href="@($"{AdminPages.Root}/codes/stats{(Days == null ? "" : $"?days={Days}")}")">All channels</a>
+    </Actions>
+    <ChildContent>
+        <form method="get" action="@($"{AdminPages.Root}/codes/stats/channel")" class="mb-6 flex flex-wrap items-end gap-3">
+            <input type="hidden" name="name" value="@Channel">
+            <label class="field">
+                Signups from
+                <select class="input" name="days" onchange="this.form.submit()">
+                    @foreach (var (days, label) in Periods)
+                    {
+                        <option value="@days" selected="@(Days == days)">@label</option>
+                    }
+                </select>
+            </label>
+            <noscript><button type="submit" class="btn btn-secondary">Show</button></noscript>
+        </form>
+
+        <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+            @foreach (var (label, value, hint) in Cards)
+            {
+                <div class="panel">
+                    <p class="text-xs font-semibold tracking-wide text-muted uppercase">@label</p>
+                    <p class="mt-1 font-heading text-2xl font-bold text-brand sm:text-3xl">@value</p>
+                    <p class="mt-1 text-xs text-muted">@hint</p>
+                </div>
+            }
+        </div>
+
+        <section class="panel mt-6">
+            <h2 class="panel-title">Signups</h2>
+            @if (Signups.Count == 0)
+            {
+                <p class="text-sm text-muted">No signups@(Days != null ? " in that time" : "").</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead><tr><th>Identity</th><th>Signed up</th><th>Code</th><th>Plan</th><th>How</th><th>Until</th><th>Host</th></tr></thead>
+                        <tbody class="divide-y divide-line">
+                            @foreach (var (signup, row) in Signups)
+                            {
+                                <tr>
+                                    <td>
+                                        @if (signup.Identity is { } identity)
+                                        {
+                                            <a class="link flex items-center gap-2" href="@AdminPages.SubscriptionUrl(identity)">
+                                                <img src="@PublicProfiles.ImageUrl(identity)" alt="" width="24" height="24" loading="lazy"
+                                                     referrerpolicy="no-referrer" class="size-6 shrink-0 rounded-full bg-line object-cover">
+                                                @identity
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">not recorded</span>
+                                        }
+                                    </td>
+                                    <td class="text-xs whitespace-nowrap text-muted">@AdminForm.Day(signup.UsedAt)</td>
+                                    <td class="whitespace-nowrap"><a class="link font-mono text-xs" href="@AdminPages.CodeUrl(signup.Code)">@signup.Code</a></td>
+                                    @if (row != null)
+                                    {
+                                        <td class="whitespace-nowrap">
+                                            @row.PlanName
+                                            @if (row.Entitlement.QuotaBytes is { } quota)
+                                            {
+                                                <span class="block text-xs text-muted">@StorageSize.Format(quota)</span>
+                                            }
+                                        </td>
+                                        <td class="text-xs whitespace-nowrap">@row.How</td>
+                                        <td class="text-xs whitespace-nowrap"><Until Row="row" /></td>
+                                        <td><SyncTag Grant="row.Grant" /></td>
+                                    }
+                                    else
+                                    {
+                                        <td colspan="4" class="text-xs text-muted">@(signup.Identity == null ? "" : "no subscription here")</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (Unnamed > 0)
+                {
+                    <p class="mt-4 text-xs text-muted">@Unnamed signup@(Unnamed == 1 ? "" : "s") did not record who signed up: the identity host did not say, or an admin took the use.</p>
+                }
+            }
+        </section>
+    </ChildContent>
+</AdminLayout>
+
+@code {
+    [Parameter, EditorRequired] public AdminContext Admin { get; set; } = null!;
+
+    /// <summary>The codes' source; empty for codes without one</summary>
+    [Parameter, EditorRequired] public string Channel { get; set; } = "";
+
+    /// <summary>Signups from this many days ago; null lists all of them</summary>
+    [Parameter] public int? Days { get; set; }
+
+    [Parameter] public List<ChannelSignup> Signups { get; set; } = [];
+
+    private static readonly (int? Days, string Label)[] Periods =
+        [(null, "the start"), (7, "the last 7 days"), (30, "the last 30 days"), (90, "the last 90 days"), (365, "the last year")];
+
+    private int Unnamed => Signups.Count(s => s.Signup.Identity == null);
+
+    private (string Label, string Value, string Hint)[] Cards =>
+    [
+        ("Signups", Signups.Count.ToString(), Days == null ? "since the start" : $"in the last {Days} days"),
+        ("Identities", Signups.Count(s => s.Signup.Identity != null).ToString(), $"{Unnamed} not recorded"),
+        ("Paid now", Signups.Count(s => s.Row?.IsPaid == true).ToString(), "on a paid or group plan"),
+        ("Free now", Signups.Count(s => s.Row is { IsPaid: false }).ToString(), "still on a free plan"),
+    ];
+}

@@ -27,7 +27,8 @@
     </div>
 
     <div class="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Breakdown Title="By channel" Lines="Stats.BySource" Empty="(no channel)" />
+        <Breakdown Title="By channel" Lines="Stats.BySource" Empty="(no channel)"
+                   Href="@(name => AdminPages.ChannelUrl(name ?? "", Days))" />
         <Breakdown Title="By plan" Lines="Stats.ByPlan" Empty="(no plan)" />
         <Breakdown Title="By owner" Lines="Stats.ByOwner" Empty="(no owner)" />
 

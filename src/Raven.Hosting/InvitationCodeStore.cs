@@ -65,8 +65,16 @@ public record InvitationCodeStatsLine(string? Name, int Codes, int UsesAllowed, 
 public record WeeklySignups(string Week, int Signups);
 
 /// <summary>
-/// The invitation codes and their uses (#1908), in SQLite. A use records only when it happened: who signed
-/// up with a code is kept on their own registration, not here.
+/// One signup with a code: who, if their identity host said, and when
+/// </summary>
+/// <param name="Identity">Null when the host did not say who signed up, or for a use an admin took</param>
+/// <param name="Code">The code in its display form</param>
+/// <param name="UsedAt">Unix ms</param>
+public record CodeSignup(string? Identity, string Code, long UsedAt);
+
+/// <summary>
+/// The invitation codes and their uses (#1908), in SQLite. A use records when it happened and who signed up, when
+/// their identity host says.
 ///
 /// Every method takes a code as typed (any case, with or without dashes); a code that cannot be one is
 /// simply not found.
@@ -184,7 +192,8 @@ public class InvitationCodeStore
     /// Records a use if the code exists, is not disabled and has one left, and returns the code; null if refused.
     /// One statement takes the use, so two signups racing for the last use cannot both get it.
     /// </summary>
-    public async Task<InvitationCode?> TryUseAsync(string? input)
+    /// <param name="identity">Who is signing up, normalized; null when the host does not say</param>
+    public async Task<InvitationCode?> TryUseAsync(string? input, string? identity = null)
     {
         var code = InvitationCodeFormat.Normalize(input);
         if (code == null)
@@ -196,8 +205,8 @@ public class InvitationCodeStore
         await using var command = connection.CreateCommand();
         command.CommandText =
             """
-            INSERT INTO invitation_code_uses (code, used_at)
-            SELECT @code, @now
+            INSERT INTO invitation_code_uses (code, used_at, identity)
+            SELECT @code, @now, @identity
             WHERE EXISTS (
                 SELECT 1 FROM invitation_codes c
                 WHERE c.code = @code
@@ -207,6 +216,7 @@ public class InvitationCodeStore
             """ + SelectWithUsesLeft + " WHERE c.code = @code AND changes() = 1 GROUP BY c.code;";
         command.Parameters.AddWithValue("@code", code);
         command.Parameters.AddWithValue("@now", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("@identity", (object?)identity ?? DBNull.Value);
         await using var reader = await command.ExecuteReaderAsync();
         return await reader.ReadAsync() ? Read(reader) : null;
     }
@@ -363,6 +373,35 @@ public class InvitationCodeStore
         return new InvitationCodeStats(since, totals, neverUsed, usedUp, disabled, bySource, byOwner, byPlan, byWeek);
     }
 
+    /// <summary>
+    /// The signups with the codes of one source (marketing channel), newest first.
+    /// </summary>
+    /// <param name="since">Only signups from here (unix ms); null lists all of them</param>
+    public async Task<List<CodeSignup>> SignupsAsync(string source, long? since)
+    {
+        await using var connection = await OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT u.identity, u.code, u.used_at
+            FROM invitation_code_uses u JOIN invitation_codes c ON c.code = u.code
+            WHERE c.source = @source AND u.used_at >= @since
+            ORDER BY u.used_at DESC, u.id DESC;
+            """;
+        command.Parameters.AddWithValue("@source", source.Trim());
+        command.Parameters.AddWithValue("@since", since ?? 0);
+        await using var reader = await command.ExecuteReaderAsync();
+        var signups = new List<CodeSignup>();
+        while (await reader.ReadAsync())
+        {
+            signups.Add(new CodeSignup(reader.IsDBNull(0) ? null : reader.GetString(0),
+                InvitationCodeFormat.Display(reader.GetString(1)), reader.GetInt64(2)));
+        }
+        return signups;
+    }
+
+    //
+
     // One row per code: its uses ever, the uses it still allows (none if disabled), and its signups since @since
     private const string PerCode =
         """
@@ -494,15 +533,22 @@ public class InvitationCodeStore
                 CREATE TABLE IF NOT EXISTS invitation_code_uses (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     code TEXT NOT NULL,
-                    used_at INTEGER NOT NULL
+                    used_at INTEGER NOT NULL,
+                    identity TEXT NULL
                 );
                 CREATE INDEX IF NOT EXISTS ix_invitation_code_uses_code ON invitation_code_uses(code);
                 """;
             await command.ExecuteNonQueryAsync();
 
             // Databases created before codes could be disabled, or carry a plan, lack those columns
-            await AddColumnIfMissingAsync(connection, "disabled", "INTEGER NOT NULL DEFAULT 0");
-            await AddColumnIfMissingAsync(connection, "plan_id", "TEXT NULL");
+            await AddColumnIfMissingAsync(connection, "invitation_codes", "disabled", "INTEGER NOT NULL DEFAULT 0");
+            await AddColumnIfMissingAsync(connection, "invitation_codes", "plan_id", "TEXT NULL");
+
+            // Uses from before they said who signed up: who it was, from the subscription the signup started
+            if (await AddColumnIfMissingAsync(connection, "invitation_code_uses", "identity", "TEXT NULL"))
+            {
+                await BackfillIdentitiesAsync(connection);
+            }
 
             _initialized = true;
         }
@@ -512,16 +558,69 @@ public class InvitationCodeStore
         }
     }
 
-    private static async Task AddColumnIfMissingAsync(SqliteConnection connection, string column, string definition)
+    // True when the column was added
+    private static async Task<bool> AddColumnIfMissingAsync(SqliteConnection connection, string table, string column,
+        string definition)
     {
         await using var columns = connection.CreateCommand();
-        columns.CommandText = "SELECT COUNT(*) FROM pragma_table_info('invitation_codes') WHERE name = @column;";
+        columns.CommandText = "SELECT COUNT(*) FROM pragma_table_info(@table) WHERE name = @column;";
+        columns.Parameters.AddWithValue("@table", table);
         columns.Parameters.AddWithValue("@column", column);
-        if (Convert.ToInt64(await columns.ExecuteScalarAsync()) == 0)
+        if (Convert.ToInt64(await columns.ExecuteScalarAsync()) != 0)
         {
-            await using var alter = connection.CreateCommand();
-            alter.CommandText = $"ALTER TABLE invitation_codes ADD COLUMN {column} {definition};";
-            await alter.ExecuteNonQueryAsync();
+            return false;
+        }
+        await using var alter = connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {definition};";
+        await alter.ExecuteNonQueryAsync();
+        return true;
+    }
+
+    // A signup that said who it was started a code grant (reference code:K7QX-M2PD-9FHW:...) in the same request,
+    // straight after taking the use: each such grant names the latest use of its code taken in the minute before it,
+    // and each use is named once
+    private static async Task BackfillIdentitiesAsync(SqliteConnection connection)
+    {
+        await using var exists = connection.CreateCommand();
+        exists.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'plan_grants';";
+        if (Convert.ToInt64(await exists.ExecuteScalarAsync()) == 0)
+        {
+            return;
+        }
+
+        var grants = new List<(string Identity, string Reference, long CreatedAt)>();
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                "SELECT identity, reference, created_at FROM plan_grants WHERE source = @source ORDER BY created_at;";
+            command.Parameters.AddWithValue("@source", PlanGrantSource.Code);
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                grants.Add((reader.GetString(0), reader.GetString(1), reader.GetInt64(2)));
+            }
+        }
+
+        foreach (var (identity, reference, createdAt) in grants)
+        {
+            var parts = reference.Split(':');
+            if (parts.Length < 2 || parts[0] != "code" || InvitationCodeFormat.Normalize(parts[1]) is not { } code)
+            {
+                continue;
+            }
+            await using var update = connection.CreateCommand();
+            update.CommandText =
+                """
+                UPDATE invitation_code_uses SET identity = @identity
+                WHERE id = (
+                    SELECT id FROM invitation_code_uses
+                    WHERE code = @code AND identity IS NULL AND used_at <= @createdAt AND used_at > @createdAt - 60000
+                    ORDER BY used_at DESC, id DESC LIMIT 1);
+                """;
+            update.Parameters.AddWithValue("@identity", identity);
+            update.Parameters.AddWithValue("@code", code);
+            update.Parameters.AddWithValue("@createdAt", createdAt);
+            await update.ExecuteNonQueryAsync();
         }
     }
 }

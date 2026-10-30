@@ -23,40 +23,62 @@
 <meta name="theme-color" content="#FAF7F3">
 <link rel="stylesheet" href="@SiteAssets.Stylesheet">
 <script src="/assets/signup.js" defer></script>
+<script src="/assets/menu.js" defer></script>
+<script src="/assets/plan-now.js" defer></script>
 </head>
 <body>
 <header class="@(Lead != null ? "site-header lead" : "site-header")">
-    <div class="@FrameClass">
-        <div class="topbar">
-            <a class="wordmark" href="/"><img src="/assets/brand/mark-ember.svg" alt="" width="48" height="48">@SiteName</a>
-            <div class="account">
-                @if (_signedIn != null)
-                {
-                    <img class="avatar" src="@PublicProfiles.ImageUrl(_signedIn.Identity)" alt="" width="32" height="32"
-                         referrerpolicy="no-referrer">
-                    <span class="who-am-i">
-                        @if (_signedIn.Name != null)
+    @* The bar is as wide as the widest page on every page, so the account is always at the right edge *@
+    <div class="frame wide topbar">
+        <a class="wordmark" href="/"><img src="/assets/brand/mark-ember.svg" alt="" width="48" height="48">@SiteName</a>
+        <nav class="site-nav" aria-label="Main">
+            <a href="/#plans">Plans</a>
+            @if (_signedIn != null)
+            {
+                <a href="@AccountPages.Root" aria-current="@(IsHere(AccountPages.Root) ? "page" : null)">Your plan</a>
+            }
+        </nav>
+        <div class="account">
+            @if (_signedIn != null)
+            {
+                @* The avatar opens what is about the person: who they are, their Homebase, admin, sign out *@
+                <details class="account-menu">
+                    <summary aria-label="Account menu for @(_signedIn.Name ?? _signedIn.Identity)">
+                        <span class="avatar-frame" aria-hidden="true">
+                            @Initial
+                            <img class="avatar" src="@PublicProfiles.ImageUrl(_signedIn.Identity)" alt="" width="36" height="36"
+                                 referrerpolicy="no-referrer" onerror="this.remove()">
+                        </span>
+                        <span class="summary-name">@(_signedIn.Name ?? _signedIn.Identity)</span>
+                    </summary>
+                    <div class="menu-panel">
+                        <p class="who-am-i">
+                            @if (_signedIn.Name != null)
+                            {
+                                <span class="name">@_signedIn.Name</span>
+                            }
+                            <span class="identity">@_signedIn.Identity</span>
+                        </p>
+                        <a href="@AccountPages.Root">Your plan</a>
+                        <a href="@($"https://{_signedIn.Identity}/owner")">Your Homebase</a>
+                        @if (_isAdmin)
                         {
-                            <span class="name">@_signedIn.Name</span>
+                            <a href="@AdminPages.Root">Admin</a>
                         }
-                        <span class="identity">@_signedIn.Identity</span>
-                    </span>
-                    <a class="button secondary" href="@AccountPages.Root">Your plan</a>
-                    @if (_isAdmin)
-                    {
-                        <a class="button secondary" href="@AdminPages.Root">Admin</a>
-                    }
-                    <form method="post" action="@($"{UpgradePage.Root}/sign-out")">
-                        <AntiforgeryField Token="_antiforgery!" />
-                        <button type="submit" class="button secondary">Sign out</button>
-                    </form>
-                }
-                else if (ShowSignIn)
-                {
-                    <a class="button secondary" href="@SitePages.SignIn">Sign in</a>
-                }
-            </div>
+                        <form method="post" action="@($"{UpgradePage.Root}/sign-out")">
+                            <AntiforgeryField Token="_antiforgery!" />
+                            <button type="submit">Sign out</button>
+                        </form>
+                    </div>
+                </details>
+            }
+            else if (ShowSignIn)
+            {
+                <a class="button secondary" href="@SitePages.SignIn">Sign in</a>
+            }
         </div>
+    </div>
+    <div class="@FrameClass">
         <h1>@Title</h1>
         @Lead
         @if (Step != null)
@@ -108,6 +130,11 @@
     private Microsoft.AspNetCore.Antiforgery.AntiforgeryTokenSet? _antiforgery;
 
     private string FrameClass => Wide ? "frame wide" : "frame";
+
+    // The first letter of the name, or of the identity
+    private string Initial => (_signedIn?.Name ?? _signedIn?.Identity ?? "?")[..1].ToUpperInvariant();
+
+    private bool IsHere(string path) => HttpContext?.Request.Path.StartsWithSegments(path) == true;
 
     protected override async Task OnInitializedAsync()
     {

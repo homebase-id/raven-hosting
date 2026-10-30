@@ -75,6 +75,12 @@ public record SubscriptionRow(PlanGrant Grant, string PlanName, Entitlement Enti
 }
 
 /// <summary>
+/// One signup on a channel's page, with the subscription the identity has now; null when the signup did not say who
+/// it was, or the identity has no subscription here
+/// </summary>
+public record ChannelSignup(CodeSignup Signup, SubscriptionRow? Row);
+
+/// <summary>
 /// One paid subscription on the renewals list: when it runs out, and whether it is in its grace
 /// </summary>
 public record RenewalRow(SubscriptionView View, long Now)
@@ -553,6 +559,24 @@ public static class AdminPages
             });
         });
 
+        // One channel's signups: who, with which code and when, and the subscription each has now
+        admin.MapGet("/codes/stats/channel", async (HttpContext context, string? name, int? days, InvitationCodeStore codes,
+            PlanGrantStore grants, AddOnStore addOns, PlanStore plans, SubscriptionService subscriptions, TimeProvider time) =>
+        {
+            days = days is > 0 ? days : null;
+            var channel = name?.Trim() ?? "";
+            var rows = (await SubscriptionRowsAsync(grants, addOns, plans, subscriptions, time))
+                .ToDictionary(r => r.Grant.Identity, StringComparer.OrdinalIgnoreCase);
+            var signups = await codes.SignupsAsync(channel, days == null ? null : DaysAgo(time, days.Value));
+            return await Show<AdminChannel>(context, new
+            {
+                Channel = channel,
+                Days = days,
+                Signups = signups.Select(s => new ChannelSignup(s,
+                    s.Identity == null ? null : rows.GetValueOrDefault(s.Identity))).ToList(),
+            });
+        });
+
         // The site's traffic over the last day, 7, 30 or 90
         admin.MapGet("/traffic", async (HttpContext context, int? days, AnalyticsStore analytics, TimeProvider time) =>
         {
@@ -818,6 +842,10 @@ public static class AdminPages
     public static string PlanUrl(string id) => $"{Root}/plans/{Uri.EscapeDataString(id)}";
 
     public static string CodeUrl(string code) => $"{Root}/codes/{Uri.EscapeDataString(code)}";
+
+    /// <summary>One channel's signups, over the last so many days (null for all)</summary>
+    public static string ChannelUrl(string channel, int? days) =>
+        $"{Root}/codes/stats/channel?name={Uri.EscapeDataString(channel)}" + (days == null ? "" : $"&days={days}");
 
     /// <summary>The terms the new-plan form asks a price for: a month, a year, two years</summary>
     public static readonly int[] NewPlanTerms = [1, 12, 24];

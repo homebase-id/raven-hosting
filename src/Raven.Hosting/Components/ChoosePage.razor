@@ -1,34 +1,40 @@
 @* Step 1: what the owner has now, then the plans for sale, each against it *@
 <SitePage Title="Choose a plan" Step="0" Wide="true">
-    @if (Now != null)
-    {
-        <YourPlanNow Now="Now" PlanName="@CurrentPlanName" />
-    }
+    <div data-plan-now="@(PlanNowPending ? "pending" : "ready")">
+        @if (Now != null)
+        {
+            <YourPlanNow Now="Now" PlanName="@CurrentPlanName" />
+        }
 
-    @if (Plans.Count == 0)
-    {
-        <p>There are no plans for sale right now.</p>
-    }
-    else
-    {
-        <ul class="plans">
-            @foreach (var plan in Plans)
-            {
-                <PlanCard Plan="plan" IsCurrent="UpgradePage.SamePlan(plan.Id, Now?.PlanId)" Fit="PlanFit.Of(plan, Now)"
-                          IsRecommended="UpgradePage.SamePlan(plan.Id, Recommended?.Id)">
-                    <Action>
-                        <a class="button" href="@UpgradePage.ConfirmUrl(plan.Id)">Choose @plan.Name</a>
-                    </Action>
-                </PlanCard>
-            }
-        </ul>
-    }
+        @if (Plans.Count == 0)
+        {
+            <p>There are no plans for sale right now.</p>
+        }
+        else
+        {
+            <ul class="plans">
+                @foreach (var plan in Plans)
+                {
+                    <PlanCard Plan="plan" IsCurrent="UpgradePage.SamePlan(plan.Id, Now?.PlanId)" Fit="PlanFit.Of(plan, Now)"
+                              IsRecommended="UpgradePage.SamePlan(plan.Id, Recommended?.Id)">
+                        <Action>
+                            <a class="button" href="@UpgradePage.ConfirmUrl(plan.Id)">Choose @plan.Name</a>
+                        </Action>
+                    </PlanCard>
+                }
+            </ul>
+        }
+    </div>
 </SitePage>
 
 @code {
 
     /// <summary>What the owner has now, as their host says</summary>
     [Parameter] public IdentityOnHost? Now { get; set; }
+
+    /// <summary>Whether Now is still to come: plan-now.js asks for it and swaps in what shows it</summary>
+    [Parameter] public bool PlanNowPending { get; set; }
+
     [Parameter] public string CurrentPlanName { get; set; } = "";
     [Parameter] public List<Plan> Plans { get; set; } = [];
 
