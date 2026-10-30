@@ -308,7 +308,8 @@ The public pages, in `SitePages.cs`, on the same Razor components and stylesheet
   Signed in as the identity named, it shows whose plan, their share, what it gives, and what happens to the plan
   they are on now, with **Join** and **Decline**; signed in as anyone else, or once used, replaced, expired or ended,
   it says why not.
-- **`/terms-and-conditions`**, **`/privacy-policy`**: as they were on the old Netlify site (ravenhosting-web).
+- **`/terms-and-conditions`**, **`/privacy-policy`**: as they were on the old Netlify site (ravenhosting-web); the
+  privacy policy also says what the [traffic](#traffic) counts keep.
 - **`/report`**: the report form for content that breaks the terms; `/report/content`, where identity hosts link
   (`Host:ReportContentUrl`), redirects to it. Reports are kept in the database (`content_reports`) and read with
   `./raven.sh reports` (`GET /api/v1/reports?sinceDays=<n>`, create key). Nobody is notified of a new one.
@@ -402,7 +403,7 @@ three groups:
   or its sign-up link); **Channels**, the code stats by source, each channel opening to who signed up with it, with which code, and
   the subscription each has now; **Renewals**, paid subscriptions running out in 7, 30
   or 90 days or in their grace, with their owner, seats, auto-renew and any open invoice, and those moved back to
-  free, with a CSV export.
+  free, with a CSV export; **Traffic**, the site's own page counts ([Traffic](#traffic)).
 - **Safety:** **Abuse reports**, filed on the site's `/report` page ("Report abuse").
 
 The overview shows how each group stands and the subscriptions that need a look. **Checkout** (who may buy) is a
@@ -422,11 +423,32 @@ beta switch, not a tab: while it is closed, a strip under the menu says so and l
   into `.tools/`; no Node). CI fails when the committed stylesheet is not what the sources build
   (`./build-admin-css.sh --check`).
 
+## Traffic
+
+The site counts its own traffic, in `Analytics.cs`: no scripts, no cookies, no third party. Every GET for a page is
+noted in memory once it is answered (not static files, `/admin`, `/api`, `/ping`, `/.well-known`, the YouAuth
+callback); `AnalyticsWorker` writes them in batches every 5 seconds, and what is left when the service stops. With
+more than 10,000 waiting, new ones are dropped and logged; a failed write is logged and never fails the request.
+
+- **Where:** its own SQLite file, `RavenHosting__AnalyticsDatabasePath`, by default `analytics.db` beside the main
+  database: page views never hold up a purchase, and the file can be lost or deleted without harm.
+- **What:** the path (a join link's token is dropped: `/join/…`), status, referring site (host only, not this one),
+  `utm_source`, device (mobile, desktop, or bot from the user agent), and a visitor hash: an HMAC of the address and
+  user agent with a salt made each day (UTC) and deleted the day after. No address or user agent is stored, and a
+  visitor is counted for a day but never followed from one to the next.
+- **How long:** each view is kept 90 days. Hourly, every finished day is rolled up into `daily_totals` and
+  `daily_pages`, kept for good.
+- **Seeing it:** **Marketing → Traffic** (`/admin/traffic?days=1|7|30|90`): visitors and views, bots and 404s, visitors
+  per day, the steps towards buying (`/`, `/sign-in`, `/upgrade/confirm`, `/upgrade/checkout`, `/upgrade/done`,
+  visitors who reached each), top pages, referrers, campaigns, devices, pages not found, and every month. A view is
+  a page answered 2xx to someone not a bot; visitors are counted afresh each day, so over several days they add up.
+
 ## Configuration
 
 | Key | Value |
 |---|---|
 | `RavenHosting__DatabasePath` | required; e.g. `/data/invitation-codes.db`, on a persistent volume |
+| `RavenHosting__AnalyticsDatabasePath` | optional; the [traffic](#traffic) counts. Defaults to `analytics.db` beside the database |
 | `RavenHosting__SignupApiKey` | required; the signup key, for the identity hosts |
 | `RavenHosting__CreateApiKey` | required; the create key, for admins |
 | `RavenHosting__RequestsPerMinutePerIp` | optional, default 300; more than that from one client is a 429 |
@@ -437,7 +459,7 @@ beta switch, not a tab: while it is closed, a strip under the menu says so and l
 | `RavenHosting__PublicDomain` | optional; the service's own public domain, e.g. `ravenhosting.cloud`: its YouAuth client id and where the site and `/upgrade` are. None: both are off (404) |
 | `RavenHosting__DisplayName` | optional; what the identity's consent screen calls the service. Defaults to the public domain |
 
-SQLite means **one instance**, and the database file should be backed up.
+SQLite means **one instance**, and the database file should be backed up (the analytics file need not be).
 
 Against junk traffic: a request without the right key is refused before its body is read, a body over 4 KB
 is a 413, and each client IP gets `RequestsPerMinutePerIp`. The client IP comes from Caddy's `X-Forwarded-For`,

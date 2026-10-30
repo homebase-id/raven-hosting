@@ -115,7 +115,7 @@
     [Parameter, EditorRequired] public string Title { get; set; } = "";
 
     /// <summary>
-    /// Which page is open: home; subscriptions, plans or checkout; codes, channels or renewals; reports
+    /// Which page is open: home; subscriptions, plans or checkout; codes, channels, renewals or traffic; reports
     /// </summary>
     [Parameter] public string Section { get; set; } = "home";
 
@@ -136,7 +136,8 @@
             ["checkout"]),
         new("marketing", "Marketing", $"{AdminPages.Root}/codes",
             [("codes", "Codes", $"{AdminPages.Root}/codes"), ("channels", "Channels", $"{AdminPages.Root}/codes/stats"),
-             ("renewals", "Renewals", $"{AdminPages.Root}/renewals")],
+             ("renewals", "Renewals", $"{AdminPages.Root}/renewals"),
+             ("traffic", "Traffic", $"{AdminPages.Root}/traffic")],
             []),
         new("safety", "Safety", $"{AdminPages.Root}/reports", [("reports", "Abuse reports", $"{AdminPages.Root}/reports")], []),
     ];
