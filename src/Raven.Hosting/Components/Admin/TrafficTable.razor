@@ -1,0 +1,37 @@
+@* One breakdown of the traffic: a line per page, referrer, campaign or device *@
+<section class="panel">
+    <h2 class="panel-title">@Title</h2>
+    @if (Lines.Count == 0)
+    {
+        <p class="text-sm text-muted">@Empty</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="table">
+                <thead><tr><th></th><th class="text-right">@VisitorsLabel</th><th class="text-right">@ViewsLabel</th></tr></thead>
+                <tbody class="divide-y divide-line">
+                    @foreach (var line in Lines)
+                    {
+                        <tr>
+                            <td class="break-words">@line.Name</td>
+                            <td class="text-right tabular-nums">@line.Visitors</td>
+                            <td class="text-right tabular-nums">@line.Views</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public List<TrafficLine> Lines { get; set; } = [];
+
+    /// <summary>What it says with no lines</summary>
+    [Parameter] public string Empty { get; set; } = "None in that time.";
+
+    [Parameter] public string VisitorsLabel { get; set; } = "Visitors";
+    [Parameter] public string ViewsLabel { get; set; } = "Views";
+}

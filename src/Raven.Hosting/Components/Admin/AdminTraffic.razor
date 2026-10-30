@@ -1,0 +1,88 @@
+@* Traffic: the site's own page counts over a chosen time (Analytics): views and visitors, per day, the steps towards
+   buying, pages, where visitors came from, devices, and the pages asked for that are not there *@
+<AdminLayout Admin="Admin" Title="Traffic" Section="traffic">
+    <form method="get" action="@($"{AdminPages.Root}/traffic")" class="mb-6 flex flex-wrap items-end gap-3">
+        <label class="field">
+            Count from
+            <select class="input" name="days" onchange="this.form.submit()">
+                @foreach (var (days, label) in Periods)
+                {
+                    <option value="@days" selected="@(Stats.Days == days)">@label</option>
+                }
+            </select>
+        </label>
+        <noscript><button type="submit" class="btn btn-secondary">Show</button></noscript>
+        <p class="pb-2 text-xs text-muted">Counted here, without scripts or cookies. A view is a page shown to someone who is not a bot; a visitor is counted once a day (UTC), so over several days they add up.</p>
+    </form>
+
+    <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+        @foreach (var (label, value, hint) in Cards)
+        {
+            <div class="panel">
+                <p class="text-xs font-semibold tracking-wide text-muted uppercase">@label</p>
+                <p class="mt-1 font-heading text-2xl font-bold text-brand sm:text-3xl">@value</p>
+                <p class="mt-1 text-xs text-muted">@hint</p>
+            </div>
+        }
+    </div>
+
+    <div class="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <section class="panel">
+            <h2 class="panel-title">Visitors per day</h2>
+            @{ var mostDay = Math.Max(1, Stats.ByDay.Max(d => d.Visitors)); }
+            <ul class="space-y-1 text-sm">
+                @foreach (var day in Stats.ByDay)
+                {
+                    <li class="grid grid-cols-[6.5rem_1fr_3rem] items-center gap-3" title="@day.Views views">
+                        <span class="text-xs text-muted tabular-nums">@day.Name</span>
+                        <span class="h-2 rounded-full bg-line"><span class="block h-2 rounded-full bg-brand" style="width: @(day.Visitors * 100 / mostDay)%"></span></span>
+                        <span class="text-right tabular-nums">@day.Visitors</span>
+                    </li>
+                }
+            </ul>
+        </section>
+
+        <section class="panel">
+            <h2 class="panel-title">Towards buying</h2>
+            @{ var first = Math.Max(1, Stats.Funnel.Max(s => s.Visitors)); }
+            <ul class="space-y-1 text-sm">
+                @foreach (var step in Stats.Funnel)
+                {
+                    <li class="grid grid-cols-[6.5rem_1fr_3rem] items-center gap-3" title="@step.Path">
+                        <span class="text-xs text-muted">@step.Label</span>
+                        <span class="h-2 rounded-full bg-line"><span class="block h-2 rounded-full bg-brand" style="width: @(step.Visitors * 100 / first)%"></span></span>
+                        <span class="text-right tabular-nums">@step.Visitors</span>
+                    </li>
+                }
+            </ul>
+            <p class="mt-3 text-xs text-muted">Visitors who reached each page, in any order. Done is a purchase made.</p>
+        </section>
+
+        <TrafficTable Title="Pages" Lines="Stats.Pages" />
+        <TrafficTable Title="Referrers" Lines="Stats.Referrers" Empty="None from other sites in that time." />
+        <TrafficTable Title="Campaigns (utm_source)" Lines="Stats.Campaigns" Empty="No links with utm_source in that time." />
+        <TrafficTable Title="Devices" Lines="Stats.Devices" />
+        <TrafficTable Title="Not found" Lines="Stats.Missing" Empty="No 404s in that time." ViewsLabel="Asked" />
+        <TrafficTable Title="By month" Lines="ByMonth" Empty="Nothing counted yet." VisitorsLabel="Visitors (daily, summed)" />
+    </div>
+</AdminLayout>
+
+@code {
+    [Parameter, EditorRequired] public AdminContext Admin { get; set; } = null!;
+    [Parameter, EditorRequired] public TrafficStats Stats { get; set; } = null!;
+
+    private static readonly (int Days, string Label)[] Periods =
+        [(1, "today"), (7, "the last 7 days"), (30, "the last 30 days"), (AnalyticsStore.KeepDays, $"the last {AnalyticsStore.KeepDays} days")];
+
+    private string Within => Stats.Days == 1 ? "today" : $"in the last {Stats.Days} days";
+
+    private (string Label, string Value, string Hint)[] Cards =>
+    [
+        ("Visitors", Stats.Visitors.ToString(), Within),
+        ("Views", Stats.Views.ToString(), Within),
+        ("Bot requests", Stats.BotViews.ToString(), "crawlers and scripts, left out of the rest"),
+        ("Not found", Stats.NotFound.ToString(), "requests for pages that are not there"),
+    ];
+
+    private List<TrafficLine> ByMonth => Stats.ByMonth.Select(m => new TrafficLine(m.Name, m.Views, m.Visitors)).ToList();
+}

@@ -553,6 +553,13 @@ public static class AdminPages
             });
         });
 
+        // The site's traffic over the last day, 7, 30 or 90
+        admin.MapGet("/traffic", async (HttpContext context, int? days, AnalyticsStore analytics, TimeProvider time) =>
+        {
+            days = days is 1 or 7 or 30 or AnalyticsStore.KeepDays ? days : 7;
+            return await Show<AdminTraffic>(context, new { Stats = await analytics.StatsAsync(days.Value, time.GetUtcNow()) });
+        });
+
         admin.MapGet("/codes/{code}", async (HttpContext context, string code, InvitationCodeStore codes, PlanStore plans,
             PlanHosts hosts) =>
             await codes.GetAsync(code) is { } found

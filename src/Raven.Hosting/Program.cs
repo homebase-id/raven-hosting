@@ -45,6 +45,13 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<PlanService>();
 builder.Services.AddSingleton<SubscriptionService>();
 builder.Services.AddHostedService<PlanGrantWorker>();
+// Traffic counts, in their own file beside the main one unless said otherwise (README, "Traffic")
+var analyticsDatabasePath = builder.Configuration["RavenHosting:AnalyticsDatabasePath"] is { Length: > 0 } analyticsPath
+    ? analyticsPath
+    : Path.Combine(Path.GetDirectoryName(databasePath) ?? "", "analytics.db");
+builder.Services.AddSingleton(new AnalyticsStore(analyticsDatabasePath));
+builder.Services.AddSingleton<Analytics>();
+builder.Services.AddHostedService<AnalyticsWorker>();
 builder.Services.AddHttpClient(PlanService.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(15));
 
 // The upgrade page: YouAuth logins in progress and the keys sealing them and its session cookie, in the database
@@ -101,6 +108,9 @@ app.UseStaticFiles(new StaticFileOptions
                 ? "public, max-age=31536000, immutable"
                 : "no-cache",
 });
+// Pages only: the stylesheet, fonts and images are answered above, and are not counted
+var analytics = app.Services.GetRequiredService<Analytics>();
+app.Use(analytics.MiddlewareAsync);
 app.UseRateLimiter();
 app.Use(InvitationCodeApi.RequireApiKey);
 app.UseAntiforgery();
