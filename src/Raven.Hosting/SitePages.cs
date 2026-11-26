@@ -109,7 +109,8 @@ public static class SitePages
 
         // A filed report is stored for admins (raven.sh reports); the form is the antiforgery-checked kind
         app.MapPost("/report", async (HttpContext context, IFormCollection form, UpgradeOptions options,
-                ReportStore reports, TimeProvider time, IAntiforgery antiforgery, ILogger<ReportStore> logger) =>
+                ReportStore reports, ReportMailer mailer, TimeProvider time, IAntiforgery antiforgery,
+                ILogger<ReportStore> logger) =>
             {
                 if (!options.Enabled)
                 {
@@ -130,8 +131,19 @@ public static class SitePages
                     }, StatusCodes.Status400BadRequest);
                 }
 
-                var id = await reports.AddAsync(report, time.GetUtcNow().ToUnixTimeMilliseconds());
+                var filedAt = time.GetUtcNow().ToUnixTimeMilliseconds();
+                var id = await reports.AddAsync(report, filedAt);
                 logger.LogWarning("Content report {id} filed; read it with raven.sh reports", id);
+
+                // The report is kept already, so a mail that fails is logged and the person reporting still sees it sent
+                try
+                {
+                    await mailer.SendAsync(id, filedAt);
+                }
+                catch (Exception e)
+                {
+                    logger.LogError(e, "Content report {id} filed, but its notice was not mailed", id);
+                }
                 return Results.Redirect("/report?sent=true");
             })
             .WithMetadata(new RequestSizeLimitAttribute(ReportBodyLimit));

@@ -312,11 +312,21 @@ The public pages, in `SitePages.cs`, on the same Razor components and stylesheet
   privacy policy also says what the [traffic](#traffic) counts keep.
 - **`/report`**: the report form for content that breaks the terms; `/report/content`, where identity hosts link
   (`Host:ReportContentUrl`), redirects to it. Reports are kept in the database (`content_reports`) and read with
-  `./raven.sh reports` (`GET /api/v1/reports?sinceDays=<n>`, create key). Nobody is notified of a new one.
+  `./raven.sh reports` (`GET /api/v1/reports?sinceDays=<n>`, create key) or on the admin pages' `/admin/reports`.
+  Each new one is mailed as a bare notice, if [report mail](#report-mail) is set up.
 
 **Create a free identity** goes to the visitor's region's sign-up host: the page carries the EU host and
 `wwwroot/assets/signup.js` picks by time zone, then language, in step with odin-js `detectRegion`. Every header
 has **Sign in**, or the identity signed in and **Sign out**, which goes back to `/`.
+
+### Report mail
+
+When a report is filed, the service mails a bare notice through SMTP2GO's HTTPS API (`POST /email/send`, the key
+in the `X-Smtp2go-Api-Key` header), the way odin-core sends its own mail: `Report #<id> filed on <domain>`, the
+time in UTC and the link to `/admin/reports`. Never what the person reporting wrote: their contact details and
+evidence stay in the database. The report is stored first, so a mail that fails is logged (`its notice was not
+mailed`) and the form still says it was sent; it is not retried. Off without `RavenHosting__ReportMail__ApiKey`
+and a recipient (see [Configuration](#configuration)); the startup log says which.
 
 ## Upgrade page
 
@@ -458,6 +468,9 @@ more than 10,000 waiting, new ones are dropped and logged; a failed write is log
 | `RavenHosting__ReconcileIntervalHours` | optional, default 24 |
 | `RavenHosting__PublicDomain` | optional; the service's own public domain, e.g. `ravenhosting.cloud`: its YouAuth client id and where the site and `/upgrade` are. None: both are off (404) |
 | `RavenHosting__DisplayName` | optional; what the identity's consent screen calls the service. Defaults to the public domain |
+| `RavenHosting__ReportMail__ApiKey` | optional; an SMTP2GO API key allowed `/email/send`. None of the three: [report mail](#report-mail) is off; only some, or all without `PublicDomain`: startup fails |
+| `RavenHosting__ReportMail__From` | required with the key; the sender, on a domain SMTP2GO has verified, e.g. `no-reply@ravenhosting.cloud` |
+| `RavenHosting__ReportMail__To__0`, `__1`, ... | required with the key; who gets the notices, e.g. `info@homebase.id` |
 
 SQLite means **one instance**, and the database file should be backed up (the analytics file need not be).
 

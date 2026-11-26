@@ -57,13 +57,19 @@ builder.Services.AddHttpClient(PlanService.HttpClientName, client => client.Time
 // The upgrade page: YouAuth logins in progress and the keys sealing them and its session cookie, in the database
 var loginStore = new YouAuthLoginStore(databasePath);
 builder.Services.AddSingleton(loginStore);
-builder.Services.AddSingleton(UpgradeOptions.FromConfiguration(builder.Configuration));
+var upgradeOptions = UpgradeOptions.FromConfiguration(builder.Configuration);
+builder.Services.AddSingleton(upgradeOptions);
 builder.Services.AddDataProtection().SetApplicationName("raven-hosting");
 builder.Services.Configure<KeyManagementOptions>(options => options.XmlRepository = loginStore);
 builder.Services.AddSingleton<YouAuthLogin>();
 builder.Services.AddSingleton<UpgradeSession>();
 builder.Services.AddSingleton<PublicProfiles>();
 builder.Services.AddHttpClient(YouAuthLogin.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(15));
+// A notice of each new report, by SMTP2GO; off without RavenHosting:ReportMail (README, "Report mail")
+var reportMailOptions = ReportMailOptions.FromConfiguration(builder.Configuration, upgradeOptions);
+builder.Services.AddSingleton(reportMailOptions);
+builder.Services.AddSingleton<ReportMailer>();
+builder.Services.AddHttpClient(ReportMailer.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(15));
 // The upgrade page is Razor components (Components/), rendered on the server from its endpoints
 builder.Services.AddRazorComponents();
 builder.Services.AddAntiforgery(options =>
@@ -96,6 +102,16 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+
+if (reportMailOptions.Enabled)
+{
+    app.Logger.LogInformation("Report mail is on: a notice of each new report goes to {count} address(es)",
+        reportMailOptions.To.Count);
+}
+else
+{
+    app.Logger.LogInformation("Report mail is off: RavenHosting:ReportMail is not configured");
+}
 
 app.UseForwardedHeaders();
 // The upgrade page's stylesheet and fonts (wwwroot/assets). The stylesheet's link carries a version from its content,
