@@ -1,6 +1,5 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Raven.Hosting;
 
@@ -12,7 +11,6 @@ namespace Raven.Hosting;
 public class ReportMailOptions
 {
     public string ApiKey { get; init; } = "";
-    public string ApiBaseUrl { get; init; } = "https://api.smtp2go.com/v3";
     public string From { get; init; } = "";
     public IReadOnlyList<string> To { get; init; } = [];
 
@@ -24,11 +22,9 @@ public class ReportMailOptions
         var options = new ReportMailOptions
         {
             ApiKey = section["ApiKey"]?.Trim() ?? "",
-            ApiBaseUrl = (section["ApiBaseUrl"] is { Length: > 0 } url ? url : "https://api.smtp2go.com/v3").TrimEnd('/'),
             From = section["From"]?.Trim() ?? "",
-            To = section.GetSection("To").GetChildren()
-                .Select(x => x.Value?.Trim())
-                .OfType<string>()
+            To = (section.GetSection("To").Get<string[]>() ?? [])
+                .Select(x => x.Trim())
                 .Where(x => x.Length > 0)
                 .ToList(),
         };
@@ -48,30 +44,38 @@ public class ReportMailOptions
 public class ReportMailer(ReportMailOptions options, UpgradeOptions site, IHttpClientFactory httpClientFactory)
 {
     public const string HttpClientName = "report-mail";
+    private const string SendUrl = "https://api.smtp2go.com/v3/email/send";
+    private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
 
-    public bool Enabled => options.Enabled;
-
-    /// <summary>Throws when SMTP2GO refuses it; the caller logs that, the report being stored already</summary>
-    public async Task SendAsync(long reportId, DateTimeOffset filedAt, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Does nothing while report mail is off. Throws when SMTP2GO refuses it; the caller logs that, the report being
+    /// stored already. Only called from /report, which is off without the site, so the site's domain is set.
+    /// </summary>
+    public async Task SendAsync(long reportId, long filedAtMs)
     {
-        var domain = site.PublicDomain.Length > 0 ? site.PublicDomain : "ravenhosting.cloud";
+        if (!options.Enabled)
+        {
+            return;
+        }
+
+        var domain = site.PublicDomain;
         var body = new SendRequest(
             options.From,
             options.To,
             $"Report #{reportId} filed on {domain}",
             $"""
-             Report #{reportId} was filed on {domain} at {filedAt.UtcDateTime:yyyy-MM-dd HH:mm} UTC.
+             Report #{reportId} was filed on {domain} at {AdminForm.When(filedAtMs)}.
 
              Read it at https://{domain}{AdminPages.Root}/reports
              """);
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"{options.ApiBaseUrl}/email/send");
+        using var request = new HttpRequestMessage(HttpMethod.Post, SendUrl);
         // A header, as odin-core sends it, so the key is never in a URL or a body
         request.Headers.Add("X-Smtp2go-Api-Key", options.ApiKey);
-        request.Content = JsonContent.Create(body);
+        request.Content = JsonContent.Create(body, options: Json);
 
-        using var response = await httpClientFactory.CreateClient(HttpClientName).SendAsync(request, cancellationToken);
-        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var response = await httpClientFactory.CreateClient(HttpClientName).SendAsync(request);
+        var content = await response.Content.ReadAsStringAsync();
         var data = Read(content);
 
         if (!response.IsSuccessStatusCode)
@@ -94,7 +98,7 @@ public class ReportMailer(ReportMailOptions options, UpgradeOptions site, IHttpC
     {
         try
         {
-            return JsonSerializer.Deserialize<Response>(content)?.Data;
+            return JsonSerializer.Deserialize<Response>(content, Json)?.Data;
         }
         catch (JsonException)
         {
@@ -102,16 +106,9 @@ public class ReportMailer(ReportMailOptions options, UpgradeOptions site, IHttpC
         }
     }
 
-    private record SendRequest(
-        [property: JsonPropertyName("sender")] string Sender,
-        [property: JsonPropertyName("to")] IReadOnlyList<string> To,
-        [property: JsonPropertyName("subject")] string Subject,
-        [property: JsonPropertyName("text_body")] string TextBody);
+    private record SendRequest(string Sender, IReadOnlyList<string> To, string Subject, string TextBody);
 
-    private record Response([property: JsonPropertyName("data")] ResponseData? Data);
+    private record Response(ResponseData? Data);
 
-    private record ResponseData(
-        [property: JsonPropertyName("succeeded")] int Succeeded,
-        [property: JsonPropertyName("failed")] int Failed,
-        [property: JsonPropertyName("error")] string? Error);
+    private record ResponseData(int Succeeded, int Failed, string? Error);
 }

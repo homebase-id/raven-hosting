@@ -471,7 +471,6 @@ more than 10,000 waiting, new ones are dropped and logged; a failed write is log
 | `RavenHosting__ReportMail__ApiKey` | optional; an SMTP2GO API key allowed `/email/send`. None: [report mail](#report-mail) is off |
 | `RavenHosting__ReportMail__From` | required with the key; the sender, on a domain SMTP2GO has verified, e.g. `no-reply@ravenhosting.cloud` |
 | `RavenHosting__ReportMail__To__0`, `__1`, ... | required with the key; who gets the notices, e.g. `info@homebase.id` |
-| `RavenHosting__ReportMail__ApiBaseUrl` | optional, default `https://api.smtp2go.com/v3` |
 
 SQLite means **one instance**, and the database file should be backed up (the analytics file need not be).
 

@@ -131,21 +131,18 @@ public static class SitePages
                     }, StatusCodes.Status400BadRequest);
                 }
 
-                var filedAt = time.GetUtcNow();
-                var id = await reports.AddAsync(report, filedAt.ToUnixTimeMilliseconds());
+                var filedAt = time.GetUtcNow().ToUnixTimeMilliseconds();
+                var id = await reports.AddAsync(report, filedAt);
                 logger.LogWarning("Content report {id} filed; read it with raven.sh reports", id);
 
                 // The report is kept already, so a mail that fails is logged and the person reporting still sees it sent
-                if (mailer.Enabled)
+                try
                 {
-                    try
-                    {
-                        await mailer.SendAsync(id, filedAt);
-                    }
-                    catch (Exception e)
-                    {
-                        logger.LogError(e, "Content report {id} filed, but its notice was not mailed", id);
-                    }
+                    await mailer.SendAsync(id, filedAt);
+                }
+                catch (Exception e)
+                {
+                    logger.LogError(e, "Content report {id} filed, but its notice was not mailed", id);
                 }
                 return Results.Redirect("/report?sent=true");
             })
