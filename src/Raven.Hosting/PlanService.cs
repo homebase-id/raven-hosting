@@ -418,12 +418,8 @@ public class PlanService(
     private static string IdentityUrl(string host, string identity) =>
         $"https://{host}/api/plans/v1/identities/{Uri.EscapeDataString(identity)}";
 
-    private static async Task<string> DescribeAsync(HttpResponseMessage response)
-    {
-        var body = await response.Content.ReadAsStringAsync();
-        var status = $"{(int)response.StatusCode} {response.StatusCode}";
-        return string.IsNullOrWhiteSpace(body) ? status : $"{status}: {(body.Length > 200 ? body[..200] : body)}";
-    }
+    private static async Task<string> DescribeAsync(HttpResponseMessage response) =>
+        UpstreamError.Describe(response.StatusCode, await response.Content.ReadAsStringAsync());
 
 
     // A grant from before plans were kept here leaves out the quota and public web presence: the host keeps its own

@@ -57,7 +57,8 @@ builder.Services.AddHttpClient(PlanService.HttpClientName, client => client.Time
 // The upgrade page: YouAuth logins in progress and the keys sealing them and its session cookie, in the database
 var loginStore = new YouAuthLoginStore(databasePath);
 builder.Services.AddSingleton(loginStore);
-builder.Services.AddSingleton(UpgradeOptions.FromConfiguration(builder.Configuration));
+var upgradeOptions = UpgradeOptions.FromConfiguration(builder.Configuration);
+builder.Services.AddSingleton(upgradeOptions);
 builder.Services.AddDataProtection().SetApplicationName("raven-hosting");
 builder.Services.Configure<KeyManagementOptions>(options => options.XmlRepository = loginStore);
 builder.Services.AddSingleton<YouAuthLogin>();
@@ -65,7 +66,7 @@ builder.Services.AddSingleton<UpgradeSession>();
 builder.Services.AddSingleton<PublicProfiles>();
 builder.Services.AddHttpClient(YouAuthLogin.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(15));
 // A notice of each new report, by SMTP2GO; off without RavenHosting:ReportMail (README, "Report mail")
-var reportMailOptions = ReportMailOptions.FromConfiguration(builder.Configuration);
+var reportMailOptions = ReportMailOptions.FromConfiguration(builder.Configuration, upgradeOptions);
 builder.Services.AddSingleton(reportMailOptions);
 builder.Services.AddSingleton<ReportMailer>();
 builder.Services.AddHttpClient(ReportMailer.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(15));

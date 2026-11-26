@@ -10,37 +10,39 @@ namespace Raven.Hosting;
 /// </summary>
 public class ReportMailOptions
 {
-    public string ApiKey { get; init; } = "";
-    public string From { get; init; } = "";
-    public IReadOnlyList<string> To { get; init; } = [];
-
-    public bool Enabled => ApiKey.Length > 0 && To.Count > 0;
-
-    public static ReportMailOptions FromConfiguration(IConfiguration configuration)
+    /// <param name="publicDomain">The site's (<see cref="UpgradeOptions.PublicDomain"/>): the notice links to it, and
+    /// without it there is no report page to send from</param>
+    public ReportMailOptions(string? apiKey, string? from, IEnumerable<string>? to, string publicDomain)
     {
-        var section = configuration.GetSection("RavenHosting:ReportMail");
-        var options = new ReportMailOptions
-        {
-            ApiKey = section["ApiKey"]?.Trim() ?? "",
-            From = section["From"]?.Trim() ?? "",
-            To = (section.GetSection("To").Get<string[]>() ?? [])
-                .Select(x => x.Trim())
-                .Where(x => x.Length > 0)
-                .ToList(),
-        };
+        ApiKey = apiKey?.Trim() ?? "";
+        From = from?.Trim() ?? "";
+        To = (to ?? []).Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
+
         // All or nothing: a setting left out or misspelt must not leave mail quietly off
-        var missing = new[]
-        {
-            options.ApiKey.Length == 0 ? "ApiKey" : null,
-            options.From.Length == 0 ? "From" : null,
-            options.To.Count == 0 ? "To" : null,
-        }.OfType<string>().ToList();
-        if (missing.Count is > 0 and < 3)
+        (string Name, bool Set)[] settings = [("ApiKey", ApiKey != ""), ("From", From != ""), ("To", To.Count > 0)];
+        var missing = settings.Where(x => !x.Set).Select(x => x.Name).ToList();
+        if (missing.Count > 0 && missing.Count < settings.Length)
         {
             throw new InvalidOperationException(
                 $"RavenHosting:ReportMail is partly configured; missing {string.Join(", ", missing)}");
         }
-        return options;
+        if (missing.Count == 0 && publicDomain == "")
+        {
+            throw new InvalidOperationException("RavenHosting:PublicDomain is not configured, but RavenHosting:ReportMail is");
+        }
+    }
+
+    public string ApiKey { get; }
+    public string From { get; }
+    public IReadOnlyList<string> To { get; }
+
+    /// <summary>The key stands for all three: the constructor refuses some without the others</summary>
+    public bool Enabled => ApiKey != "";
+
+    public static ReportMailOptions FromConfiguration(IConfiguration configuration, UpgradeOptions site)
+    {
+        var section = configuration.GetSection("RavenHosting:ReportMail");
+        return new(section["ApiKey"], section["From"], section.GetSection("To").Get<string[]>(), site.PublicDomain);
     }
 }
 
@@ -57,7 +59,7 @@ public class ReportMailer(ReportMailOptions options, UpgradeOptions site, IHttpC
 
     /// <summary>
     /// Does nothing while report mail is off. Throws when SMTP2GO refuses it; the caller logs that, the report being
-    /// stored already. Only called from /report, which is off without the site, so the site's domain is set.
+    /// stored already. The options make sure the site's domain is set when mail is on.
     /// </summary>
     public async Task SendAsync(long reportId, long filedAtMs)
     {
@@ -90,7 +92,7 @@ public class ReportMailer(ReportMailOptions options, UpgradeOptions site, IHttpC
         {
             // Their errors come as a 4xx with the detail in data.error; the status alone says little
             throw new InvalidOperationException(
-                $"SMTP2GO /email/send returned {(int)response.StatusCode}: {data?.Error ?? Shorten(content)}");
+                $"SMTP2GO /email/send returned {data?.Error ?? UpstreamError.Describe(response.StatusCode, content)}");
         }
 
         // A 200 can still refuse recipients. Only that is a failure, and it is not retried: a mail that went out but
@@ -101,9 +103,6 @@ public class ReportMailer(ReportMailOptions options, UpgradeOptions site, IHttpC
                 $"SMTP2GO /email/send accepted {data.Succeeded} recipient(s) and refused {data.Failed}");
         }
     }
-
-    /// <summary>A body that is not theirs, e.g. a proxy's HTML error page, kept to a few hundred characters</summary>
-    private static string Shorten(string content) => content.Length <= 300 ? content : content[..300] + "…";
 
     private static ResponseData? Read(string content)
     {

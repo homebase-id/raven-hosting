@@ -468,7 +468,7 @@ more than 10,000 waiting, new ones are dropped and logged; a failed write is log
 | `RavenHosting__ReconcileIntervalHours` | optional, default 24 |
 | `RavenHosting__PublicDomain` | optional; the service's own public domain, e.g. `ravenhosting.cloud`: its YouAuth client id and where the site and `/upgrade` are. None: both are off (404) |
 | `RavenHosting__DisplayName` | optional; what the identity's consent screen calls the service. Defaults to the public domain |
-| `RavenHosting__ReportMail__ApiKey` | optional; an SMTP2GO API key allowed `/email/send`. None of the three: [report mail](#report-mail) is off; only some: startup fails |
+| `RavenHosting__ReportMail__ApiKey` | optional; an SMTP2GO API key allowed `/email/send`. None of the three: [report mail](#report-mail) is off; only some, or all without `PublicDomain`: startup fails |
 | `RavenHosting__ReportMail__From` | required with the key; the sender, on a domain SMTP2GO has verified, e.g. `no-reply@ravenhosting.cloud` |
 | `RavenHosting__ReportMail__To__0`, `__1`, ... | required with the key; who gets the notices, e.g. `info@homebase.id` |
 
