@@ -102,9 +102,15 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
-app.Logger.LogInformation(reportMailOptions.Enabled
-    ? "Report mail is on: a notice of each new report goes to {count} address(es)"
-    : "Report mail is off (no RavenHosting:ReportMail:ApiKey or :To)", reportMailOptions.To.Count);
+if (reportMailOptions.Enabled)
+{
+    app.Logger.LogInformation("Report mail is on: a notice of each new report goes to {count} address(es)",
+        reportMailOptions.To.Count);
+}
+else
+{
+    app.Logger.LogInformation("Report mail is off: RavenHosting:ReportMail is not configured");
+}
 
 app.UseForwardedHeaders();
 // The upgrade page's stylesheet and fonts (wwwroot/assets). The stylesheet's link carries a version from its content,

@@ -5,8 +5,8 @@ namespace Raven.Hosting;
 
 /// <summary>
 /// Who hears of a new report (README, "Report mail"): RavenHosting:ReportMail:ApiKey, an SMTP2GO API key allowed
-/// /email/send; :From, a sender on a domain SMTP2GO has verified; :To, one or more addresses. Off while the key or the
-/// recipients are missing.
+/// /email/send; :From, a sender on a domain SMTP2GO has verified; :To, one or more addresses. Off with none of them;
+/// startup fails with only some.
 /// </summary>
 public class ReportMailOptions
 {
@@ -28,9 +28,17 @@ public class ReportMailOptions
                 .Where(x => x.Length > 0)
                 .ToList(),
         };
-        if (options.Enabled && options.From.Length == 0)
+        // All or nothing: a setting left out or misspelt must not leave mail quietly off
+        var missing = new[]
         {
-            throw new InvalidOperationException("RavenHosting:ReportMail:From is not configured");
+            options.ApiKey.Length == 0 ? "ApiKey" : null,
+            options.From.Length == 0 ? "From" : null,
+            options.To.Count == 0 ? "To" : null,
+        }.OfType<string>().ToList();
+        if (missing.Count is > 0 and < 3)
+        {
+            throw new InvalidOperationException(
+                $"RavenHosting:ReportMail is partly configured; missing {string.Join(", ", missing)}");
         }
         return options;
     }
@@ -82,7 +90,7 @@ public class ReportMailer(ReportMailOptions options, UpgradeOptions site, IHttpC
         {
             // Their errors come as a 4xx with the detail in data.error; the status alone says little
             throw new InvalidOperationException(
-                $"SMTP2GO /email/send returned {(int)response.StatusCode}: {data?.Error ?? content}");
+                $"SMTP2GO /email/send returned {(int)response.StatusCode}: {data?.Error ?? Shorten(content)}");
         }
 
         // A 200 can still refuse recipients. Only that is a failure, and it is not retried: a mail that went out but
@@ -93,6 +101,9 @@ public class ReportMailer(ReportMailOptions options, UpgradeOptions site, IHttpC
                 $"SMTP2GO /email/send accepted {data.Succeeded} recipient(s) and refused {data.Failed}");
         }
     }
+
+    /// <summary>A body that is not theirs, e.g. a proxy's HTML error page, kept to a few hundred characters</summary>
+    private static string Shorten(string content) => content.Length <= 300 ? content : content[..300] + "…";
 
     private static ResponseData? Read(string content)
     {
