@@ -64,6 +64,11 @@ builder.Services.AddSingleton<YouAuthLogin>();
 builder.Services.AddSingleton<UpgradeSession>();
 builder.Services.AddSingleton<PublicProfiles>();
 builder.Services.AddHttpClient(YouAuthLogin.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(15));
+// A notice of each new report, by SMTP2GO; off without RavenHosting:ReportMail (README, "Report mail")
+var reportMailOptions = ReportMailOptions.FromConfiguration(builder.Configuration);
+builder.Services.AddSingleton(reportMailOptions);
+builder.Services.AddSingleton<ReportMailer>();
+builder.Services.AddHttpClient(ReportMailer.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(15));
 // The upgrade page is Razor components (Components/), rendered on the server from its endpoints
 builder.Services.AddRazorComponents();
 builder.Services.AddAntiforgery(options =>
@@ -96,6 +101,10 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+
+app.Logger.LogInformation(reportMailOptions.Enabled
+    ? "Report mail is on: a notice of each new report goes to {count} address(es)"
+    : "Report mail is off (no RavenHosting:ReportMail:ApiKey or :To)", reportMailOptions.To.Count);
 
 app.UseForwardedHeaders();
 // The upgrade page's stylesheet and fonts (wwwroot/assets). The stylesheet's link carries a version from its content,
